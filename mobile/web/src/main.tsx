@@ -4,8 +4,16 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { createRootRoute, createRoute, createRouter, Link, Outlet, RouterProvider } from '@tanstack/react-router'
 import { api, ErrorApi, pesos, post, type Captura, type Rol } from './api'
 import { Campo } from './Campo'
+import { Comparar } from './Comparar'
+import { Corregidos } from './Corregidos'
+import { TresB } from './TresB'
 import { Comparativo } from './Comparativo'
 import logo3b from './assets/logo-3b.png'
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/600.css'
+import '@fontsource/inter/700.css'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/700.css'
 import './styles.css'
 
 const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -60,9 +68,15 @@ function App() {
 
   return <>
     <header className="top"><div className="top-inner">
-      <Link to="/" className="brand"><img src={logo3b} width="40" height="40" alt="Tiendas 3B" />Validat3B</Link>
+      <Link to="/" className="brand"><img src={logo3b} width="36" height="36" alt="Tiendas 3B" />Validat3B</Link>
       {rol && <button className="top-action" onClick={() => void salir()}>Salir</button>}
     </div></header>
+    {rol && <nav className="pestanas" aria-label="Secciones"><div className="pestanas-inner">
+      <Link to={rol === 'revisor' ? '/revisar' : '/'}>{rol === 'revisor' ? 'Revisión' : 'Capturar'}</Link>
+      <Link to="/comparar">Comparar</Link>
+      {rol === 'revisor' && <Link to="/comparativo">Versiones</Link>}
+      <Link to="/corregidos">Errores corregidos</Link>
+    </div></nav>}
     <main className="main">
       {aviso && <p className="notice" role="status">{aviso}</p>}
       {rol ? <Outlet /> : sesion.isPending && navigator.onLine
@@ -124,6 +138,7 @@ function Revisar() {
     {elegida && <div className="stack">
       <button onClick={() => setElegida(null)}>Volver a la bandeja</button>
       <h2>{elegida.sucursal} · {pesos(elegida.precio_centavos)}</h2>
+      {elegida.resultado && <TresB resultado={elegida.resultado} />}
       <p>{elegida.resultado?.explicacion}</p>
       <div className="fotos">{(['producto', 'etiqueta'] as const).map((tipo) => <a key={tipo}
         href={`/api/capturas/${elegida.id}/foto/${tipo}`} target="_blank" rel="noreferrer">
@@ -152,6 +167,8 @@ const router = createRouter({
   routeTree: root.addChildren([
     createRoute({ getParentRoute: () => root, path: '/', component: Inicio }),
     createRoute({ getParentRoute: () => root, path: '/revisar', component: Revisar }),
+    createRoute({ getParentRoute: () => root, path: '/comparar', component: Comparar }),
+    createRoute({ getParentRoute: () => root, path: '/corregidos', component: Corregidos }),
     createRoute({ getParentRoute: () => root, path: '/comparativo', component: ComparativoRevisor }),
   ]),
 })

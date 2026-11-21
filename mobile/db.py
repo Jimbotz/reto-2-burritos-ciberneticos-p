@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS equivalencias_qqp (
     sku TEXT NOT NULL REFERENCES productos(sku), producto TEXT NOT NULL, marca TEXT NOT NULL,
     presentacion TEXT NOT NULL, PRIMARY KEY (sku, producto, marca, presentacion)
 );
+CREATE TABLE IF NOT EXISTS familias_qqp (
+    sku TEXT PRIMARY KEY REFERENCES productos(sku), producto TEXT NOT NULL,
+    marca TEXT NOT NULL DEFAULT '', filtro TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS enlaces_qqp (
     denue_id TEXT NOT NULL REFERENCES sucursales(id),
     qqp_id TEXT NOT NULL REFERENCES sucursales(id), PRIMARY KEY (denue_id, qqp_id)

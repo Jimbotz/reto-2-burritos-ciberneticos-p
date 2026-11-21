@@ -204,6 +204,17 @@ def cargar_equivalencias(db, path):
     return len(datos)
 
 
+def cargar_familias(db, path):
+    """sku → tipo de producto, marca y filtro de variante en QQP, para comparar otras presentaciones y marcas."""
+    with filas(path, "utf-8-sig") as reader:
+        datos = [(r["sku"], r["producto"], r.get("marca") or "", r.get("filtro") or "") for r in reader]
+    faltan = [sku for sku, *_ in datos if not db.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone()]
+    if faltan:
+        raise ValueError(f"SKU fuera del catálogo local: {', '.join(faltan)}")
+    db.executemany("INSERT OR REPLACE INTO familias_qqp VALUES (?, ?, ?, ?)", datos)
+    return len(datos)
+
+
 def cargar_enlaces(db, path):
     with filas(path, "utf-8-sig") as reader:
         datos = [(r["denue_id"], r["qqp_id"]) for r in reader]
@@ -218,7 +229,7 @@ def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--db", type=Path, default=ROOT / "out/mobile/campo.sqlite")
     origenes = cli.add_mutually_exclusive_group(required=True)
-    for origen in ("productos", "denue", "qqp", "equivalencias", "enlaces"):
+    for origen in ("productos", "denue", "qqp", "equivalencias", "familias", "enlaces"):
         origenes.add_argument(f"--{origen}", type=Path)
     cli.add_argument("--edicion", help="Edición oficial o identificador del archivo")
     cli.add_argument("--archivo", help="CSV de datos dentro del ZIP de DENUE")
@@ -243,6 +254,8 @@ def main():
                 mensaje = f"{sucursales} sucursales QQP, {precios} observaciones leídas"
             elif args.equivalencias:
                 mensaje = f"{cargar_equivalencias(db, args.equivalencias)} equivalencias de producto"
+            elif args.familias:
+                mensaje = f"{cargar_familias(db, args.familias)} familias de producto"
             else:
                 mensaje = f"{cargar_enlaces(db, args.enlaces)} vínculos de sucursal"
         print(mensaje)

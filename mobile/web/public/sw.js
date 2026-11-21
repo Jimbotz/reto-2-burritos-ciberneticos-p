@@ -1,4 +1,4 @@
-const CACHE = 'validat3b-campo-v2';
+const CACHE = 'validat3b-campo-v3';
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (request.mode === 'navigate' && ['/', '/revisar'].includes(url.pathname)) {
+  if (request.mode === 'navigate' && ['/', '/revisar', '/comparar', '/corregidos', '/comparativo'].includes(url.pathname)) {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);

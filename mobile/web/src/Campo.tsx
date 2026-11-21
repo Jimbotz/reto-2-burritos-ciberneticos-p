@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura, type ComparacionQQP,
+import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura,
   type Config, type Posicion, type Producto, type Sucursal, type Visita } from './api'
 import { borradores, borrarBorrador, guardarBorrador, uuid } from './borradores'
+import { TresB } from './TresB'
 
-const decisiones = { aprobada: 'Aprobada', rechazada: 'Rechazada', revision_manual: 'Revisión manual' }
+const decisiones = { aprobada: '✓ Aprobada', rechazada: '✕ Rechazada', revision_manual: '! Revisión manual' }
 const mensaje = (error: unknown) => error instanceof ErrorApi ? error.message : 'No se pudo conectar con el servidor.'
 const ahora = () => Date.now() / 1000
 
@@ -109,38 +110,13 @@ function Foto({ label, file, onFile }: { label: string; file: File | null; onFil
     setPreview(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
-  return <label className="foto">
-    <span>{label}</span>
-    {preview && <img src={preview} alt={label} />}
-    <span className="foto-accion">{file ? 'Cambiar foto' : 'Tomar foto'}</span>
+  return <label className={file ? 'foto con-foto' : 'foto'}>
+    <span className="foto-titulo">{label}</span>
+    {preview ? <img src={preview} alt={`Foto: ${label}`} /> : <span className="foto-vacia" aria-hidden="true" />}
+    <span className="foto-accion">{file ? 'Cambiar' : 'Tomar foto'}</span>
     <input aria-label={label} key={file ? 'con-foto' : 'sin-foto'} type="file" accept="image/*" capture="environment"
       onChange={(event) => onFile(event.currentTarget.files?.[0] || null)} />
   </label>
-}
-
-function PreciosQQP({ comparacion }: { comparacion: ComparacionQQP }) {
-  const { referencia, cercanos, radio_m, estado } = comparacion
-  const radioKm = radio_m / 1000
-  if (estado === 'sin_equivalencia') return <small>Este producto aún no tiene una equivalencia verificada en Profeco.</small>
-  if (estado === 'sin_ubicacion') return <small>Elige una sucursal del buscador para comparar precios cercanos de Profeco.</small>
-  return <section className="notice precios-qqp" aria-label="Precios históricos de Profeco">
-    {referencia && <div>
-      <strong>Referencia Profeco {pesos(referencia.precio_centavos)}</strong>
-      <small>{referencia.fecha} · {referencia.sucursal} · {referencia.presentacion}</small>
-    </div>}
-    {cercanos.length > 0 ? <>
-      <h2>Precios cercanos de Profeco</h2>
-      <small>Observaciones históricas hasta {radioKm} km de la visita.</small>
-      <ul>{cercanos.map((item) => <li key={item.id}>
-        <span>
-          <strong>{item.sucursal}</strong>
-          <small>{item.municipio} · {item.distancia_m < 1000
-            ? `${item.distancia_m} m` : `${(item.distancia_m / 1000).toFixed(1)} km`} · {item.fecha}</small>
-        </span>
-        <strong>{pesos(item.precio_centavos)}</strong>
-      </li>)}</ul>
-    </> : <small>Sin observaciones comparables a {radioKm} km de la visita.</small>}
-  </section>
 }
 
 function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borrador) => Promise<void> }) {
@@ -153,11 +129,6 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
   const [etiqueta, setEtiqueta] = useState<File | null>(null)
   const [estado, setEstado] = useState('')
   const [busy, setBusy] = useState(false)
-  const comparacion = useQuery({
-    queryKey: ['qqp-comparacion', visita.id, sku?.id_product],
-    queryFn: () => api<ComparacionQQP>(`/precios/qqp/comparacion?visita_id=${visita.id}&sku=${encodeURIComponent(sku!.id_product)}`),
-    enabled: !!sku, staleTime: 60000,
-  }).data
 
   async function buscar(codigoLeido?: string) {
     setBusy(true)
@@ -194,7 +165,7 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
 
   async function enviar(event: FormEvent) {
     event.preventDefault()
-    if (!producto || !etiqueta) { setEstado('Agrega las dos fotos para guardar la captura.'); return }
+    if (!producto || !etiqueta) { setEstado('Agrega la foto del producto y la de la etiqueta para guardar la captura.'); return }
     const pesosTexto = precio.trim().replace(',', '.')
     if (!/^\d{1,6}(\.\d{1,2})?$/.test(pesosTexto) || Number(pesosTexto) <= 0) {
       setEstado('Escribe un precio válido con hasta dos decimales.')
@@ -214,8 +185,8 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
     <h1>Captura el precio</h1>
     <form className="stack" onSubmit={enviar}>
       <div className="fotos">
-        <Foto label="Foto del producto" file={producto} onFile={setProducto} />
-        <Foto label="Foto de la etiqueta" file={etiqueta} onFile={setEtiqueta} />
+        <Foto label="Producto" file={producto} onFile={setProducto} />
+        <Foto label="Etiqueta" file={etiqueta} onFile={setEtiqueta} />
       </div>
       <div className="input-row">
         <label>Código de barras<input value={codigo} required inputMode="numeric" pattern="[0-9]{8,14}"
@@ -235,7 +206,6 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
           onClick={() => { setSku(item); setOpciones([]); setEstado('') }}>{item.product_name} · {item.product_barcode}</button>)}
       </details>
       {sku && <div className="notice"><strong>{sku.product_name}</strong><small>SKU {sku.id_product} · {sku.product_barcode}</small></div>}
-      {comparacion && <PreciosQQP comparacion={comparacion} />}
       <label>Precio en la etiqueta (MXN)<input className="precio" required inputMode="decimal" value={precio}
         placeholder="0.00" maxLength={9} onChange={(e) => setPrecio(e.target.value)} /></label>
       {estado && <p role="status" className="notice">{estado}</p>}
@@ -334,8 +304,11 @@ export function Campo() {
     </section>}
     {resultado && <section className="panel compact" aria-live="polite">
       <h2>Última captura</h2>
-      <strong>{resultado.resultado ? decisiones[resultado.resultado.decision] : 'Validación en curso'}</strong>
-      {resultado.resultado && <p>{resultado.resultado.explicacion}</p>}
+      {resultado.resultado ? <>
+        <strong className={`decision ${resultado.resultado.decision}`}>{decisiones[resultado.resultado.decision]}</strong>
+        <TresB resultado={resultado.resultado} />
+        <p>{resultado.resultado.explicacion}</p>
+      </> : <strong>Validación en curso</strong>}
     </section>}
   </>
 }

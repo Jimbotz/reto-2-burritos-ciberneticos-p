@@ -8,6 +8,12 @@ PWA móvil para confirmar la sucursal mediante ubicación o búsqueda, registrar
 2. Abre la URL HTTP que imprime el servidor y entra con la clave de `out/mobile/operador.clave` o `MOBILE_OPERATOR_KEY`. La bandeja en `/revisar` usa su propia clave.
 3. Busca la sucursal por nombre o dirección. Confírmala y empieza a registrar tus capturas. La ubicación queda pendiente de verificación.
 
+La app tiene tres pestañas:
+
+- **Capturar** (revisor: **Revisión**): fotos del producto y de la etiqueta, código y precio.
+- **Comparar nuestros productos**: elige una zona (alcaldía) y un producto del catálogo para ver los precios Profeco de esa zona en tres niveles (ver abajo).
+- **Errores corregidos**: los 3 errores más relevantes del modelo anterior que Validat3B ya corrige. Las capturas de pantalla y los textos se editan en `web/src/errores.ts`.
+
 ## Levantar el piloto
 
 Ejecuta estos comandos desde la raíz del repositorio.
@@ -35,11 +41,39 @@ El importador acepta el CSV de establecimientos o el ZIP publicado por INEGI. En
 .venv/bin/python -m mobile.catalogos --enlaces mobile/qqp/sucursales.csv
 ```
 
+### Comparación de precios Profeco (CDMX)
+
+En la pestaña Comparar se elige una zona (alcaldía o municipio, `GET /api/zonas`) y un producto del catálogo. La app compara con el precio Profeco más reciente de cada tienda de esa zona (`GET /api/precios/comparar`), en tres niveles:
+
+1. **Mismo producto**, por cadena (mediana entre tiendas), según `equivalencias.csv`: marca, variante y presentación exactas.
+2. **Misma marca, otra presentación**, por precio por kg, L o pieza.
+3. **Otras marcas del mismo tipo**, por precio unitario; muestra la opción más barata.
+
+Arriba de los niveles, una línea resume lo más barato de la zona y, si se escribe el precio de la etiqueta, cuánto se aleja de ese mínimo. Al elegir solo la zona aparece **¿Qué cadena es más barata?** (`GET /api/precios/cadenas`): en cada producto exacto que venden al menos dos cadenas de la zona se calcula el % de cada cadena sobre la más barata, y se promedia por cadena.
+
+Los niveles 2 y 3 salen de `familias.csv`: por SKU, el tipo de producto de QQP, su marca y un filtro de variante (palabras obligatorias, `-palabra` excluida, `_` une frases: `super_extra -integral`). El contenido se lee del texto de la presentación ("Botella 1.5 Lt.", "Paquete C/12") y solo cuentan presentaciones entre 0.4 y 2.5 veces el contenido del producto. Si el nombre del catálogo trae el peso total ("90g (total: 130g)"), se usa ese, porque QQP publica el peso total de latas y frascos.
+
+Es información para el equipo: el motor no la usa para decidir. Con la quincena de marzo de 2026 hay datos en 11 de las 16 alcaldías de CDMX. Bara no está en QQP y Neto casi no aparece.
+
+Carga probada con la segunda quincena de marzo de 2026:
+
+```sh
+mkdir -p data/qqp && curl -L -o data/qqp/QQP_2026.rar https://datos.profeco.gob.mx/docs/qqp/QQP_2026.rar
+cd data/qqp && C:/Windows/System32/tar.exe -xf QQP_2026.rar 2026/03-2026_Q2.csv; cd ../..   # tar de Windows (bsdtar) lee RAR
+# El RAR viene truncado: el CSV termina en basura. Se recorta a la última línea completa.
+.venv/Scripts/python -c "import re;p='data/qqp/2026/03-2026_Q2.csv';b=open(p,'rb').read();m=re.search(rb'\x00|  {50,}',b);open('data/qqp/03-2026_Q2_completo.csv','wb').write(b[:b.rfind(b'\n',0,m.start() if m else len(b))+1])"
+.venv/Scripts/python -m mobile.catalogos --qqp data/qqp/03-2026_Q2_completo.csv --edicion "QQP 2026-03 Q2" --estado "Ciudad de México"
+.venv/Scripts/python -m mobile.catalogos --equivalencias mobile/qqp/equivalencias.csv
+.venv/Scripts/python -m mobile.catalogos --familias mobile/qqp/familias.csv
+```
+
+`equivalencias.csv` (18 SKU) y `familias.csv` (104 SKU) se revisaron a mano contra los datos de CDMX de marzo de 2026, copiando el texto exacto de QQP. Con esa quincena, alguno de los tres niveles responde en el 75% de los pares SKU × sucursal de CDMX (muestra de 60 sucursales); el nivel exacto, en el 12%. En la consola de Windows los acentos se ven como `�`, pero el CSV y la base están bien en UTF-8.
+
 La muestra inicial combina [DENUE](https://www.inegi.org.mx/app/descarga/) y [observaciones de Profeco QQP](https://datos.profeco.gob.mx/index.php). Profeco carece de código de barras en el CSV. Las equivalencias se cargan después de cotejar marca, presentación y variante. La muestra usa el código de barras de Carnation Clavel de 360 g para resolver el SKU en el catálogo local y muestra observaciones de tres sucursales Soriana cuyo número de sucursal coincide en ambas fuentes. La referencia de QQP incluye la fecha de levantamiento. [Presentación de Nestlé](https://www.nestleprofessional.com.mx/carnation-clavel/leche-evaporada-360g)
 
 Archivos verificados de DENUE de mayo de 2025. [Ciudad de México](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_09_0525_csv.zip), [Jalisco](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_14_0525_csv.zip), [Nuevo León](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_19_0525_csv.zip)
 
-Al buscar un producto con equivalencia verificada, la app muestra hasta cinco precios históricos por sucursal de Profeco en un radio de 3 km. Las observaciones se ordenan por distancia desde la sucursal elegida e incluyen su fecha de levantamiento.
+La comparación de precios vive solo en la pestaña Comparar; el formulario de captura no la muestra. `GET /api/precios/qqp/comparacion` sigue disponible: devuelve hasta cinco precios históricos por sucursal de Profeco en un radio de 3 km de una visita, ordenados por distancia y con su fecha de levantamiento.
 
 ## Evaluación oficial y operación móvil
 
