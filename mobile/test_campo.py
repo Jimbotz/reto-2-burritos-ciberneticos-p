@@ -21,8 +21,8 @@ def jpg(nitida):
     return BytesIO(cv2.imencode(".jpg", img)[1].tobytes())
 
 
-def enviar(web, visita, producto, etiqueta):
-    datos = f'{{"id": "{uuid4()}", "visita_id": "{visita}", "codigo": "7501234567890", "precio": "30.00", "capturada_en": {time()}}}'
+def enviar(web, visita, producto, etiqueta, extra=', "codigo": "7501234567890", "precio": "30.00"'):
+    datos = f'{{"id": "{uuid4()}", "visita_id": "{visita}"{extra}, "capturada_en": {time()}}}'
     r = web.post("/api/capturas", data={"datos": datos},
                  files={"producto": ("p.jpg", producto, "image/jpeg"), "etiqueta": ("e.jpg", etiqueta, "image/jpeg")})
     assert r.status_code == 202, r.text
@@ -49,6 +49,9 @@ with TemporaryDirectory() as estado, TestClient(create_app(estado, local=True, o
     c2 = enviar(web, v, jpg(True), jpg(True))                                                       # 6
     r2 = c2["resultado"]
     assert r2["decision"] == "revision_manual" and r2["hallazgos"] and r2["accion_sugerida"]  # local: sin modelo, a revisión
+
+    c3 = enviar(web, v, jpg(True), jpg(True), extra="")  # solo las dos fotos: sin código ni precio
+    assert c3["resultado"]["decision"] == "revision_manual" and c3["precio_centavos"] == 0
 
     web.delete("/api/sesion")                                                                       # 7
     web.post("/api/sesion", json={"clave": "rev-1"})

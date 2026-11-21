@@ -33,7 +33,7 @@ function Metricas() {
     <p className="muted">{data.capturas} capturas de desarrollo contra el analista. En rojo, la de menor costo.</p>
     <div className="tabla-scroll">
       <table className="resumen metricas">
-        <thead><tr><th>Versión</th><th>Costo*</th><th>Precisión aprobar</th><th>Sensibilidad aprobar</th>
+        <thead><tr><th>Versión</th><th>Costo</th><th>Precisión aprobar</th><th>Sensibilidad aprobar</th>
           <th>Exactitud</th><th>Tokens/captura</th></tr></thead>
         <tbody>{versiones.map(([nombre, v]) => {
           const m = metricas(v.esperada_vs_predicha)
@@ -47,9 +47,6 @@ function Metricas() {
         })}</tbody>
       </table>
     </div>
-    <p className="muted">* Si rechazar una captura que el analista mandó a revisión cuesta 0 / 1 / 3 puntos.
-      Precisión de aprobar: de lo aprobado, cuánto era válido (el reto exige ≥ 97%). Sensibilidad: de lo válido,
-      cuánto aprobó. Exactitud: misma decisión que el analista.</p>
   </section>
 }
 

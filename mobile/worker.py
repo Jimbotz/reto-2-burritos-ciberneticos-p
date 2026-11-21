@@ -65,9 +65,11 @@ def procesar_una(path, fotos, client):
         resultado["hallazgos"].insert(0, salida_web.h("evidencia", "motor", "aviso", incompleta + " Un analista la revisará."))
     resultado["accion_sugerida"] = salida_web.accion_sugerida(datos, resultado)
     with conectar(path) as db:
-        db.execute("""UPDATE capturas SET estado='procesada', resultado=?, tokens=?, lease=NULL
+        # sin precio capturado (solo fotos): se guarda el que el motor leyó en la etiqueta
+        precio = item["precio_centavos"] or round((resultado.get("precio_detectado") or 0) * 100)
+        db.execute("""UPDATE capturas SET estado='procesada', resultado=?, tokens=?, precio_centavos=?, lease=NULL
                       WHERE id=? AND lease=?""",
-                   (json.dumps(resultado, ensure_ascii=False), tokens, item["id"], lease))
+                   (json.dumps(resultado, ensure_ascii=False), tokens, precio, item["id"], lease))
     return True
 
 

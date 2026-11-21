@@ -152,13 +152,27 @@ details[open] summary { margin-bottom: .6rem; }
 .evidencia { border: 1px solid var(--linea); }
 
 /* Decisión y Bueno · Bonito · Barato */
-.decision, .pastilla { width: fit-content; border-radius: 3px; font-weight: 700; }
+.decision { width: fit-content; border-radius: 3px; font-weight: 700; }
 .decision { padding: .3rem .7rem; }
-.aprobada, .pastilla.ok { background: var(--exito-fondo); color: var(--exito); }
-.revision_manual, .pastilla.revisar { background: var(--atencion-fondo); color: var(--atencion); }
-.rechazada, .pastilla.falla { background: var(--rechazo-fondo); color: var(--rechazo); }
-.tresb { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem; padding: 0; margin: 0; }
-.pastilla { padding: .25rem .65rem; font-size: .88rem; }
+.aprobada { background: var(--exito-fondo); color: var(--exito); }
+.revision_manual { background: var(--atencion-fondo); color: var(--atencion); }
+.rechazada { background: var(--rechazo-fondo); color: var(--rechazo); }
+/* pasos de la captura */
+.pasos { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; padding: 0; margin: 0;
+  font-size: .8rem; font-weight: 600; color: var(--apagado); }
+.pasos li { padding-top: .4rem; border-top: 4px solid var(--linea); }
+.pasos li.hecho { border-color: var(--tinta); color: var(--tinta); }
+.pasos li.actual { border-color: var(--marca); color: var(--tinta); }
+.fotos.unica { grid-template-columns: minmax(0, 1fr); max-width: 320px; width: 100%; margin-inline: auto; }
+/* skeletons */
+.esqueleto { display: grid; gap: .55rem; }
+.hueso { display: block; height: 1rem; border-radius: 4px; background: linear-gradient(90deg, var(--gris) 25%, var(--linea) 50%, var(--gris) 75%);
+  background-size: 200% 100%; animation: brillo 1.3s ease-in-out infinite; }
+.hueso:first-of-type:not(.foto-hueso) { width: 40%; height: 1.6rem; }
+.hueso:last-child { width: 70%; }
+.foto-hueso { height: auto; aspect-ratio: 3 / 4; max-width: 320px; }
+@keyframes brillo { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .hueso { animation: none; } }
 
 /* Comparación Profeco */
 .comparacion { display: grid; gap: .85rem; padding: .95rem; background: var(--papel); border-top: 6px solid var(--marca);

@@ -6,7 +6,7 @@ import { api, ErrorApi, pesos, post, type Captura, type Rol } from './api'
 import { Campo } from './Campo'
 import { Comparar } from './Comparar'
 import { Corregidos } from './Corregidos'
-import { TresB } from './TresB'
+import { Esqueleto } from './Esqueleto'
 import { Hallazgos } from './Hallazgos'
 import { Comparativo } from './Comparativo'
 import logo3b from './assets/logo-3b.png'
@@ -61,7 +61,6 @@ function App() {
       await api('/sesion', { method: 'DELETE' })
       localStorage.removeItem('validat3b.rol')
       localStorage.removeItem('validat3b.visita')
-      localStorage.removeItem('validat3b.ultimo')
       query.setQueryData(['sesion'], null)
       query.removeQueries({ predicate: (item) => item.queryKey[0] !== 'sesion' })
     } catch { setAviso('Conéctate a la red para cerrar la sesión.') }
@@ -81,7 +80,7 @@ function App() {
     <main className="main">
       {aviso && <p className="notice" role="status">{aviso}</p>}
       {rol ? <Outlet /> : sesion.isPending && navigator.onLine
-        ? <p role="status">Cargando tu sesión…</p> : <Acceso />}
+        ? <section className="panel"><Esqueleto texto="Cargando tu sesión…" lineas={3} /></section> : <Acceso />}
     </main>
   </>
 }
@@ -127,7 +126,7 @@ function Revisar() {
   </section>
   return <section className="panel">
     <h1>Revisión de capturas</h1>
-    {isPending && <p role="status">Cargando capturas…</p>}
+    {isPending && <Esqueleto texto="Cargando capturas…" lineas={4} />}
     {isError && <p role="alert">No se pudo cargar la bandeja.</p>}
     {data?.length === 0 && <p>Estás al día.</p>}
     {!elegida && <ul className="sucursales">{data?.map((row) => <li key={row.id}>
@@ -139,7 +138,6 @@ function Revisar() {
     {elegida && <div className="stack">
       <button onClick={() => setElegida(null)}>Volver a la bandeja</button>
       <h2>{elegida.sucursal} · {pesos(elegida.precio_centavos)}</h2>
-      {elegida.resultado && <TresB resultado={elegida.resultado} />}
       <p>{elegida.resultado?.explicacion}</p>
       {elegida.resultado && <Hallazgos resultado={elegida.resultado} />}
       <div className="fotos">{(['producto', 'etiqueta'] as const).map((tipo) => <a key={tipo}

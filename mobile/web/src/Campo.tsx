@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura,
-  type Config, type Posicion, type Producto, type Sucursal, type Visita } from './api'
+  type Config, type Posicion, type Sucursal, type Visita } from './api'
 import { borradores, borrarBorrador, guardarBorrador, uuid } from './borradores'
-import { TresB } from './TresB'
 import { Hallazgos } from './Hallazgos'
+import { Esqueleto } from './Esqueleto'
 
 const decisiones = { aprobada: '✓ Aprobada', rechazada: '✕ Rechazada', revision_manual: '! Revisión manual' }
 const mensaje = (error: unknown) => error instanceof ErrorApi ? error.message : 'No se pudo conectar con el servidor.'
 const ahora = () => Date.now() / 1000
-type Recaptura = { codigo: string; precio: string; motivo: string; n: number }
-// datos de la última captura enviada, para volver a capturarla si el motor la rechaza
-function ultimosDatos(id: string): { codigo: string; precio: string } | null {
-  try {
-    const d = JSON.parse(localStorage.getItem('validat3b.ultimo_datos') || 'null') as { id: string; codigo: string; precio: string } | null
-    return d && d.id === id ? d : null
-  } catch { return null }
+const PASOS = ['Ubicación', 'Producto', 'Etiqueta'] as const
+
+function Pasos({ actual }: { actual: number }) {
+  return <ol className="pasos" aria-label={`Paso ${actual + 1} de ${PASOS.length}`}>
+    {PASOS.map((paso, i) => <li key={paso} className={i < actual ? 'hecho' : i === actual ? 'actual' : undefined}
+      aria-current={i === actual ? 'step' : undefined}>{paso}</li>)}
+  </ol>
 }
 
 function visitaGuardada(): Visita | null {
@@ -75,19 +75,21 @@ function ElegirSucursal({ config, abrir }: { config?: Config; abrir: (visita: Vi
     finally { setBusy(false) }
   }
 
+  const formBuscar = <form className="input-row" onSubmit={buscar}>
+    <label><span>Nombre, cadena o dirección</span><input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+      placeholder="Ej. Soriana Centro" minLength={2} maxLength={120} required /></label>
+    <button className={permiteUbicacion ? undefined : 'primary'} disabled={busy}>Buscar</button>
+  </form>
+
   return <section className="panel">
-    <h1>Elige tu sucursal</h1>
-    <p className="muted">{permiteUbicacion
-      ? 'Confirma la tienda una vez para capturar varios productos en la misma visita.'
-      : 'Busca la tienda por nombre o dirección y confírmala una vez por visita.'}</p>
+    <Pasos actual={0} />
+    <h1>¿En qué tienda estás?</h1>
+    <p className="muted">Tu ubicación reemplaza la foto de la fachada. Confírmala una vez por visita.</p>
     {permiteUbicacion && <button className="primary full" disabled={busy} onClick={ubicar}>Usar mi ubicación</button>}
-    <form className="input-row" onSubmit={buscar}>
-      <label><span>Nombre, cadena o dirección</span><input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="Ej. Soriana Centro" minLength={2} maxLength={120} required /></label>
-      <button className={permiteUbicacion ? undefined : 'primary'} disabled={busy}>Buscar</button>
-    </form>
-    {estado && <p className="notice" role="status">{estado}</p>}
-    {tiendas.length > 0 && <ul className="sucursales">
+    {permiteUbicacion ? <details><summary>Buscar por nombre o dirección</summary>{formBuscar}</details> : formBuscar}
+    {estado && !busy && <p className="notice" role="status">{estado}</p>}
+    {busy && <Esqueleto texto={estado || 'Buscando sucursales…'} lineas={3} />}
+    {!busy && tiendas.length > 0 && <ul className="sucursales">
       {tiendas.map((tienda) => <li key={tienda.id}>
         <button className="store full" disabled={busy} onClick={() => void confirmar(tienda)}>
           <span><strong>{tienda.nombre}</strong><small>{tienda.direccion || `${tienda.municipio}, ${tienda.estado}`}</small>
@@ -128,123 +130,61 @@ function Foto({ label, file, onFile }: { label: string; file: File | null; onFil
   </label>
 }
 
-function Formulario({ visita, encolar, recaptura }: {
-  visita: Visita; encolar: (draft: Borrador) => Promise<void>; recaptura: Recaptura | null
+function Formulario({ visita, encolar, aviso }: {
+  visita: Visita; encolar: (draft: Borrador) => Promise<void>; aviso: string
 }) {
-  const [codigo, setCodigo] = useState('')
-  const [sku, setSku] = useState<Producto | null>(null)
-  const [nombre, setNombre] = useState('')
-  const [opciones, setOpciones] = useState<Producto[]>([])
-  const [precio, setPrecio] = useState('')
+  const [paso, setPaso] = useState<1 | 2>(1)
   const [producto, setProducto] = useState<File | null>(null)
   const [etiqueta, setEtiqueta] = useState<File | null>(null)
-  const [estado, setEstado] = useState('')
+  const [estado, setEstado] = useState(aviso)
   const [busy, setBusy] = useState(false)
-
-  async function buscar(codigoLeido?: string) {
-    setBusy(true)
-    setEstado('')
-    setSku(null)
-    setOpciones([])
-    try {
-      const query = codigoLeido ? 'codigo=' + encodeURIComponent(codigoLeido) : 'q=' + encodeURIComponent(nombre)
-      const items = await api<Producto[]>('/productos?' + query)
-      setOpciones(items.length === 1 ? [] : items)
-      if (items.length === 1) setSku(items[0])
-      else setEstado(items.length ? 'Elige el producto esperado.' : 'Sin coincidencia en el catálogo. Puedes enviar a revisión.')
-    } catch (error) { setEstado(mensaje(error)) }
-    finally { setBusy(false) }
-  }
-
-  useEffect(() => {  // "Volver a capturar": mismo producto y precio, fotos nuevas
-    if (!recaptura) return
-    setCodigo(recaptura.codigo); setPrecio(recaptura.precio); setProducto(null); setEtiqueta(null)
-    setEstado(`Vuelve a tomar las fotos. ${recaptura.motivo}`.trim())
-    if (recaptura.codigo.length >= 8) void buscar(recaptura.codigo)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [recaptura?.n])
-
-  async function leer() {
-    if (!producto) return
-    setBusy(true)
-    setEstado('')
-    try {
-      const form = new FormData()
-      form.append('foto', producto)
-      const { codigos } = await api<{ codigos: string[] }>('/codigos/leer', { method: 'POST', body: form })
-      if (codigos.length !== 1) {
-        setEstado('El código no se distinguió con claridad. Escríbelo o toma otra foto.')
-        return
-      }
-      setCodigo(codigos[0])
-      await buscar(codigos[0])
-    } catch (error) { setEstado(mensaje(error)) }
-    finally { setBusy(false) }
-  }
 
   async function enviar(event: FormEvent) {
     event.preventDefault()
-    if (!producto || !etiqueta) { setEstado('Agrega la foto del producto y la de la etiqueta para guardar la captura.'); return }
-    const pesosTexto = precio.trim().replace(',', '.')
-    if (!/^\d{1,6}(\.\d{1,2})?$/.test(pesosTexto) || Number(pesosTexto) <= 0) {
-      setEstado('Escribe un precio válido con hasta dos decimales.')
-      return
-    }
+    if (!producto || !etiqueta) { setEstado('Toma la foto de la etiqueta para enviar la captura.'); return }
     setBusy(true)
     try {
-      await encolar({ id: uuid(), visita_id: visita.id, sku: sku?.id_product || null, codigo,
-        precio: pesosTexto, capturada_en: ahora(), producto, etiqueta })
-      setCodigo(''); setSku(null); setPrecio(''); setProducto(null); setEtiqueta(null); setOpciones([])
-      setEstado('Captura guardada.')
-    } catch { setEstado('No hubo espacio para guardar el borrador. Libera almacenamiento e inténtalo de nuevo.') }
-    finally { setBusy(false) }
+      await encolar({ id: uuid(), visita_id: visita.id, capturada_en: ahora(), producto, etiqueta })
+    } catch {
+      setEstado('No hubo espacio para guardar el borrador. Libera almacenamiento e inténtalo de nuevo.')
+      setBusy(false)
+    }
   }
 
   return <section className="panel">
-    <h1>Captura el precio</h1>
-    <form className="stack" onSubmit={enviar}>
-      <div className="fotos">
-        <Foto label="Producto" file={producto} onFile={setProducto} />
-        <Foto label="Etiqueta" file={etiqueta} onFile={setEtiqueta} />
-      </div>
-      <div className="input-row">
-        <label>Código de barras<input value={codigo} required inputMode="numeric" pattern="[0-9]{8,14}"
-          maxLength={14} disabled={busy} onChange={(e) => {
-            setCodigo(e.target.value.replace(/\D/g, '')); setSku(null); setOpciones([])
-          }} /></label>
-        <button type="button" disabled={busy || codigo.length < 8} onClick={() => void buscar(codigo)}>Buscar SKU</button>
-      </div>
-      {producto && <button type="button" disabled={busy} onClick={() => void leer()}>Leer código de la foto</button>}
-      <details>
-        <summary>Buscar el producto esperado por nombre</summary>
-        <div className="input-row">
-          <label>Nombre del producto<input value={nombre} maxLength={100} onChange={(e) => setNombre(e.target.value)} /></label>
-          <button type="button" disabled={busy || nombre.trim().length < 2} onClick={() => void buscar()}>Buscar</button>
-        </div>
-        {opciones.map((item) => <button key={item.id_product} type="button" className="choice full"
-          onClick={() => { setSku(item); setOpciones([]); setEstado('') }}>{item.product_name} · {item.product_barcode}</button>)}
-      </details>
-      {sku && <div className="notice"><strong>{sku.product_name}</strong><small>SKU {sku.id_product} · {sku.product_barcode}</small></div>}
-      <label>Precio en la etiqueta (MXN)<input className="precio" required inputMode="decimal" value={precio}
-        placeholder="0.00" maxLength={9} onChange={(e) => setPrecio(e.target.value)} /></label>
+    <Pasos actual={paso} />
+    {paso === 1 ? <>
+      <h1>Foto del producto</h1>
+      <p className="muted">Que se vean el nombre, la presentación y, si se puede, el código de barras.</p>
+      <div className="fotos unica"><Foto label="Producto" file={producto} onFile={setProducto} /></div>
       {estado && <p role="status" className="notice">{estado}</p>}
-      <button className="primary full" disabled={busy}>Guardar captura</button>
-    </form>
+      <button className="primary full" disabled={!producto} onClick={() => { setEstado(''); setPaso(2) }}>Siguiente</button>
+    </> : <form className="stack" onSubmit={enviar}>
+      <h1>Foto de la etiqueta</h1>
+      <p className="muted">Toma la etiqueta de precio completa y de frente; el precio se lee de aquí.</p>
+      <div className="fotos unica"><Foto label="Etiqueta" file={etiqueta} onFile={setEtiqueta} /></div>
+      {estado && <p role="status" className="notice">{estado}</p>}
+      <div className="acciones">
+        <button type="button" disabled={busy} onClick={() => setPaso(1)}>Atrás</button>
+        <button className="primary" disabled={busy || !etiqueta}>{busy ? 'Guardando…' : 'Enviar captura'}</button>
+      </div>
+    </form>}
   </section>
 }
 
 export function Campo() {
   const [visita, setVisita] = useState(visitaGuardada)
   const [pendientes, setPendientes] = useState<Borrador[]>([])
-  const [ultimo, setUltimo] = useState(() => localStorage.getItem('validat3b.ultimo') || '')
+  const [enviada, setEnviada] = useState('')  // '' = capturando; id = viendo el resultado de esa captura
   const [aviso, setAviso] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const [recaptura, setRecaptura] = useState<Recaptura | null>(null)
+  const [recaptura, setRecaptura] = useState({ motivo: '', n: 0 })
   const sincronizando = useRef(false)
   const sincronizarDeNuevo = useRef(false)
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<Config>('/config'), staleTime: 60000 }).data
+  const enCola = pendientes.some((draft) => draft.id === enviada)
   const resultado = useQuery({
-    queryKey: ['captura', ultimo], queryFn: () => api<Captura>('/capturas/' + ultimo), enabled: !!ultimo,
+    queryKey: ['captura', enviada], queryFn: () => api<Captura>('/capturas/' + enviada), enabled: !!enviada && !enCola,
     refetchInterval: (query) => !query.state.error && query.state.data?.estado !== 'procesada' ? 1800 : false,
   }).data
 
@@ -262,10 +202,8 @@ export function Campo() {
       setAviso('')
       for (const draft of items) {
         try {
-          const r = await subir(draft)
+          await subir(draft)
           await borrarBorrador(draft.id)
-          setUltimo(r.id)
-          localStorage.setItem('validat3b.ultimo', r.id)
         } catch (error) {
           setAviso(mensaje(error))
           if (!(error instanceof ErrorApi) || error.status === 401 || error.status >= 500) break
@@ -298,24 +236,42 @@ export function Campo() {
 
   async function encolar(draft: Borrador) {
     await guardarBorrador(draft)
-    localStorage.setItem('validat3b.ultimo_datos', JSON.stringify({ id: draft.id, codigo: draft.codigo, precio: draft.precio }))
     setPendientes(await borradores())
+    setEnviada(draft.id)
     void sincronizar()
   }
 
+  const r = resultado?.resultado
   return <>
     {visita && <div className="visit">
       <div><small>{visita.ubicacion === 'verificada' ? 'Ubicación verificada' : 'Visita con verificación pendiente'}</small>
         <strong>{visita.nombre}</strong></div>
-      <button onClick={() => abrir(null)}>Cambiar</button>
+      <button onClick={() => { abrir(null); setEnviada('') }}>Cambiar</button>
     </div>}
-    {visita ? <Formulario key={visita.id} visita={visita} encolar={encolar} recaptura={recaptura} />
-      : <ElegirSucursal config={config} abrir={abrir} />}
+    {!visita ? <ElegirSucursal config={config} abrir={abrir} />
+      : !enviada ? <Formulario key={`${visita.id}-${recaptura.n}`} visita={visita} encolar={encolar} aviso={recaptura.motivo} />
+      : <section className="panel" aria-live="polite">
+        <h1>Tu captura</h1>
+        {enCola && !navigator.onLine && <p className="notice">Guardada en el teléfono. Se enviará en cuanto haya señal.</p>}
+        {r ? <>
+          <strong className={`decision ${r.decision}`}>{decisiones[r.decision]}</strong>
+          {resultado.precio_centavos > 0 && <p>Precio: <strong>{pesos(resultado.precio_centavos)}</strong></p>}
+          <p>{r.explicacion}</p>
+          <Hallazgos resultado={r} />
+          {r.decision === 'rechazada' && <button className="primary full" onClick={() => {
+            setRecaptura({ motivo: `Vuelve a tomar las fotos. ${r.accion_sugerida || ''}`.trim(), n: Date.now() })
+            setEnviada('')
+          }}>Volver a capturar</button>}
+        </> : <Esqueleto texto={enCola && !navigator.onLine ? 'Esperando señal para enviar…' : 'Validando tu captura…'} lineas={4} />}
+        <button className={r?.decision === 'rechazada' ? 'full' : 'primary full'} onClick={() => {
+          setRecaptura({ motivo: '', n: Date.now() }); setEnviada('')
+        }}>Capturar otro producto</button>
+      </section>}
     {pendientes.length > 0 && <section className="panel compact">
       <h2>Envíos pendientes ({pendientes.length})</h2>
       {aviso && <p role="status" className="notice">{aviso}</p>}
       {pendientes.map((draft) => <div key={draft.id} className="visit">
-        <span>{draft.codigo} · {pesos(Math.round(Number(draft.precio) * 100))}</span>
+        <span>Captura de las {new Date(draft.capturada_en * 1000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
         <button disabled={enviando} onClick={async () => {
           if (!window.confirm('¿Eliminar esta captura pendiente del teléfono?')) return
           await borrarBorrador(draft.id)
@@ -323,18 +279,6 @@ export function Campo() {
         }}>Quitar</button>
       </div>)}
       <button disabled={enviando} onClick={() => void sincronizar()}>{enviando ? 'Enviando…' : 'Reintentar envíos'}</button>
-    </section>}
-    {resultado && <section className="panel compact" aria-live="polite">
-      <h2>Última captura</h2>
-      {resultado.resultado ? <>
-        <strong className={`decision ${resultado.resultado.decision}`}>{decisiones[resultado.resultado.decision]}</strong>
-        <TresB resultado={resultado.resultado} />
-        <p>{resultado.resultado.explicacion}</p>
-        <Hallazgos resultado={resultado.resultado} />
-        {resultado.resultado.decision === 'rechazada' && visita && ultimosDatos(resultado.id) && <button className="primary full"
-          onClick={() => setRecaptura({ ...ultimosDatos(resultado.id)!, motivo: resultado.resultado?.accion_sugerida || '', n: Date.now() })}>
-          Volver a capturar</button>}
-      </> : <strong>Validación en curso</strong>}
     </section>}
   </>
 }

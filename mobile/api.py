@@ -65,9 +65,9 @@ class SesionNueva(BaseModel):
 class CapturaNueva(BaseModel):
     id: UUID
     visita_id: UUID
-    sku: str | None = Field(default=None, max_length=64)
-    codigo: str = Field(pattern=r"^[0-9]{8,14}$")
-    precio: str = Field(pattern=r"^[0-9]{1,6}(?:\.[0-9]{1,2})?$")
+    # solo con las dos fotos: el código sale de la foto del producto y el precio lo lee el motor de la etiqueta
+    codigo: str | None = Field(default=None, pattern=r"^[0-9]{8,14}$")
+    precio: str | None = Field(default=None, pattern=r"^[0-9]{1,6}(?:\.[0-9]{1,2})?$")
     capturada_en: float = Field(gt=0, allow_inf_nan=False)
 
 
@@ -531,23 +531,16 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
                   etiqueta: Annotated[UploadFile, File()], _=Depends(operador)):
         try:
             body = CapturaNueva.model_validate_json(datos)
-            precio = centavos(body.precio)
+            precio = centavos(body.precio) if body.precio else 0  # 0 = lo pone el worker con el precio de la etiqueta
         except (ValidationError, ValueError, InvalidOperation) as error:
-            raise HTTPException(422, "Verifica el código, el SKU seleccionado y el precio en pesos.") from error
+            raise HTTPException(422, "Revisa los datos de la captura.") from error
         id_captura = str(body.id)
         with conectar(path) as db:
             v = db.execute("""SELECT v.*, s.lat AS tienda_lat, s.lon AS tienda_lon
                               FROM visitas v LEFT JOIN sucursales s ON s.id=v.sucursal_id WHERE v.id=?""",
                            (str(body.visita_id),)).fetchone()
-            if body.sku:
-                p = db.execute("SELECT sku, datos FROM productos WHERE sku=?", (body.sku,)).fetchone()
-            else:
-                p = db.execute("SELECT sku, datos FROM productos WHERE codigo_busqueda=?",
-                               (codigo_busqueda(body.codigo),)).fetchone()
         if not v:
             raise HTTPException(404, "Selecciona la tienda antes de enviar la captura.")
-        if body.sku and not p:
-            raise HTTPException(422, "El SKU ya no está disponible en el catálogo.")
         if not v["creada"] - 300 <= body.capturada_en <= time() + 300:
             raise HTTPException(422, "La hora de captura no corresponde a la visita. Revisa la hora del teléfono.")
         try:
@@ -555,7 +548,17 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
             img_etiqueta, hash_etiqueta, gps_etiqueta = normalizar_foto(etiqueta.file)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
-        huella = sha256(json.dumps([str(body.visita_id), body.sku, body.codigo, precio, hash_producto, hash_etiqueta])
+        codigo = body.codigo
+        if not codigo:
+            with TemporaryDirectory() as folder:
+                imagen = Path(folder) / "producto.jpg"
+                imagen.write_bytes(img_producto)
+                leidos = barcodes(imagen)
+            codigo = next(iter(leidos)) if len(leidos) == 1 else ""  # varios o ninguno: lo decide el motor/revisor
+        with conectar(path) as db:
+            p = db.execute("SELECT sku, datos FROM productos WHERE codigo_busqueda=?",
+                           (codigo_busqueda(codigo),)).fetchone() if codigo else None
+        huella = sha256(json.dumps([str(body.visita_id), body.codigo, precio, hash_producto, hash_etiqueta])
                         .encode()).hexdigest()
         verificada = v["ubicacion"] == "verificada" and body.capturada_en - v["creada"] <= 4 * 3600
         if verificada and (ubicaciones_fotos := [gps for gps in (gps_producto, gps_etiqueta) if gps]):
@@ -564,7 +567,7 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         cap = json.loads(p["datos"]) if p else {}
         cap.update(capture_id=id_captura, capture_store_name=v["cadena"],
                    capture_date=datetime.fromtimestamp(body.capturada_en, timezone.utc).isoformat(),
-                   capture_price=precio / 100, capture_barcode=body.codigo,
+                   capture_price=precio / 100 if precio else None, capture_barcode=codigo,
                    product_file=ARCHIVOS["producto"], shelf_file=ARCHIVOS["etiqueta"],
                    sucursal_verificada=verificada)
         carpeta = None

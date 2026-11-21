@@ -1,0 +1,37 @@
+{
+  "version": "v2.1",
+  "generado": "2026-11-21T21:43:05.659263+00:00",
+  "capturas": 50,
+  "distribucion": {
+    "aprobada": 5,
+    "rechazada": 27,
+    "revision_manual": 18
+  },
+  "reason_code": {
+    "aprobada": {
+      "OK": 5
+    },
+    "rechazada": {
+      "CAPTURA_BORROSA": 18,
+      "CAPTURA_LEJANA": 4,
+      "SIN_PRECIO_UNITARIO": 1,
+      "PRODUCTO_NO_COINCIDE": 2,
+      "PRECIO_NO_COINCIDE": 2
+    },
+    "revision_manual": {
+      "DUDOSO": 18
+    }
+  },
+  "fallas": {
+    "tienda_fachada": 18,
+    "producto": 23,
+    "evidencia_precio": 27
+  },
+  "confianza_promedio": {
+    "aprobada": 0.912,
+    "rechazada": 0.8340740740740741,
+    "revision_manual": 0.7866666666666666
+  },
+  "json_valido": true,
+  "tokens_por_captura": 3114.0
+}

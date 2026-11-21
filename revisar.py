@@ -27,7 +27,7 @@ IMG_RE = re.compile(r"CAP-\d+_(facade|product|shelf)\.jpg")
 TAGS = ["Foto lejana", "Foto borrosa", "Etiqueta ilegible o cortada", "Precio no coincide", "Producto distinto o contratipo",
         "Descripción incompleta", "Fachada no corresponde", "Foto de otra pantalla", "Parece válida", "Otro"]
 DECISIONES = (("aprobar", "Aprobar"), ("rechazar", "Rechazar"), ("revision", "Dejar en revisión"))
-ORDEN = {"aprobada": 0, "rechazada": 1, "revision_manual": 2}
+ORDEN = {"aprobada": 0, "rechazada": 1, "revision_manual": 2, "sin etiqueta": 3}
 
 
 def load(p, default=None):
@@ -149,7 +149,10 @@ def page_final(caps, res):
     th = "".join(f"<th>{h}</th>" for h in ("Motor", "Total", "Analista: aprobada", "rechazada", "revisión"))
     tr = "".join(f"<tr><td><b>{d}</b></td><td>{sum(t[(d, a)] for a in SAME)}</td>" + "".join(f"<td>{t[(d, a)]}</td>" for a in SAME) + "</tr>"
                  for d in SAME)
-    intro = (f'<div class="sum"><b>Motor final · costo {total}</b> (todo a revisión = {len(res)}). '
+    ciego = any(caps[r["capture_id"]]["decision_esperada"] == "sin etiqueta" for r in res)
+    costo = (f"set ciego: {len(res)} capturas sin etiquetas, costo no calculable · "
+             + " · ".join(f"{d} {t[(d, 'sin etiqueta')]}" for d in SAME)) if ciego else f"costo {total}"
+    intro = (f'<div class="sum"><b>Motor final · {costo}</b> (todo a revisión = {len(res)}). '
              f'Resultados de {html.escape(RESULTS.name)}: reglas + OCR local sobre las respuestas del modelo.'
              f'<table class="mx"><tr>{th}</tr>{tr}</table></div>'
              '<p class="hint">En cada grupo van primero las que no coinciden con el analista. Marca qué debió hacer el motor.</p>')
@@ -188,6 +191,8 @@ def page_final(caps, res):
 
 def page(cadena=None):
     caps = {c["capture_id"]: c for c in load(DATA / "capturas.json")}
+    for c in caps.values():  # set ciego: sin etiquetas del analista
+        c.setdefault("decision_esperada", "sin etiqueta"), c.setdefault("motivo_rechazo", "")
     res = sorted(load(RESULTS), key=lambda r: r["capture_id"])
     if cadena:  # /?cadena=Neto → solo esa cadena
         res = [r for r in res if caps[r["capture_id"]]["capture_store_name"].lower() == cadena.lower()]

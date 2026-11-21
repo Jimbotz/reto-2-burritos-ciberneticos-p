@@ -32,8 +32,7 @@ export type Comparacion = {
 }
 export type Config = { cadenas: string[]; fuentes: Record<string, number>; foundry: boolean }
 export type Borrador = {
-  id: string; visita_id: string; sku: string | null; codigo: string; precio: string
-  capturada_en: number; producto: File; etiqueta: File
+  id: string; visita_id: string; capturada_en: number; producto: File; etiqueta: File
 }
 
 export type Decision = Resultado['decision']
