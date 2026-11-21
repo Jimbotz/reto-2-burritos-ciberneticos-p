@@ -9,6 +9,7 @@ Si las capturas traen `decision_esperada`, imprime costo operativo y precisión.
 import base64, json, os, sys
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 from pathlib import Path
 
 import cv2
@@ -48,19 +49,12 @@ NO_APPROVE_CHAINS = {"Walmart", "Bodega Aurrera", "Bara"}
 PROMPT = """Eres analista senior de auditoría de precios de Tiendas 3B. Revisas capturas de precio hechas en campo en tiendas de la competencia. Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel) y los metadatos del producto esperado.
 
 Revisa tres frentes:
-A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? El producto debe verse completo, enfocado y como protagonista de la foto; si aparece amontonado entre otros o no se distingue cuál es, es falla.
-B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas? ¿alguna es foto de la pantalla de otro dispositivo? Las fotos deben ser CERCANAS: si la etiqueta o el producto se ven pequeños dentro de la foto (tomados de lejos, con mucho anaquel alrededor), es falla con CAPTURA_LEJANA aunque se alcance a leer el precio.
-C. Evidencia de precio: la etiqueta debe ocupar buena parte de su foto y su descripción y precio deben leerse sin esfuerzo. ¿Qué precio dice? ¿Es regular, oferta o por volumen?
+A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? ¿se ve completo y legible?
+B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas y cercanas? ¿alguna es foto de la pantalla de otro dispositivo?
+C. Evidencia de precio: ¿hay etiqueta de precio visible y legible? ¿qué precio dice? ¿es regular, oferta o por volumen?
 
-Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza con su reason_code. Usa revision_manual solo cuando de verdad no puedas decidir: no se distingue cuál es el producto o no se lee el precio.
-Si no hay etiqueta de precio o le falta el precio unitario, es rechazo (SIN_ETIQUETA_PRECIO o SIN_PRECIO_UNITARIO), no revisión.
-
-NO son motivo de duda; si lo demás está bien, aprueba:
-- La etiqueta de anaquel nombra el producto con abreviaturas, en otro orden o con la marca propia de la tienda, siempre que el tipo de producto, el contenido y el precio coincidan.
-- El precio es de oferta, promoción o por volumen, o la etiqueta trae fechas de vigencia: es evidencia de precio válida; dilo en explicacion.
-- Ángulos o reflejos menores, mientras el producto y la etiqueta se vean de cerca y se lean.
-
-confidence_score es tu certeza (0 a 1) en la decisión: 0.9 o más cuando la evidencia es clara; menos solo si algo concreto te hace dudar. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
+Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala es el peor error posible.
+confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
 
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
@@ -218,11 +212,23 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
         res["codigo_barras_detectado"] = exp if label_ok else sorted(label_codes)[0]
     p, cp = res["precio_detectado"], num(cap.get("capture_price"))
 
-    # el modelo dudó, pero la etiqueta trae el código del producto, el precio cuadra y no vio fallas → aprobar
-    if (res["decision"] == "revision_manual" and label_ok and p is not None and cp is not None and abs(p - cp) <= 0.01
-            and all(x == "ok" for x in res["validaciones"].values())):
-        res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
-                   explicacion=f"{res['explicacion']} [regla: el código de la etiqueta coincide con el producto]".strip())
+    if ocr is not None:
+        ocr = cache(ocr)  # la promoción y la verificación de abajo pueden pedirlo: el OCR corre una sola vez
+
+    # el modelo dudó, pero no vio fallas, el precio cuadra y la etiqueta está corroborada (zxing u OCR local) → aprobar.
+    # ponytail: en dev (simulado con respuestas reales) el costo bajó de 59 a 57 con 14/14 aprobadas bien.
+    if (res["decision"] == "revision_manual" and p is not None and cp is not None and abs(p - cp) <= 0.01
+            and all(x == "ok" for x in res["validaciones"].values())
+            and cap.get("capture_store_name") not in NO_APPROVE_CHAINS):
+        if label_ok:
+            why_up = "el código de la etiqueta coincide con el producto"
+        elif ocr is not None and ocr_local.confirms(cap, ocr()):
+            why_up = "el OCR local leyó en la etiqueta el precio y el código del producto"
+        else:
+            why_up = None
+        if why_up:
+            res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
+                       explicacion=f"{res['explicacion']} [regla: el modelo dudó, pero {why_up}]".strip())
 
     if res["decision"] == "aprobada":
         lo, hi = num(cap.get("min_product_price")), num(cap.get("max_product_price"))
@@ -262,7 +268,7 @@ def decide(cap, base, client, *, store_verified=None):
                            store_verified=store_verified), 0
     r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
     # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
-    ocr = None if store_verified is not None else (lambda: ocr_local.read_text(base / cap["shelf_file"]))
+    ocr = None if store_verified is not None else (lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
     return apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr), tokens
 
 

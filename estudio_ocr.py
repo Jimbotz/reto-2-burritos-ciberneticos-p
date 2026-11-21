@@ -8,7 +8,7 @@ import argparse, json, statistics as st, time
 from collections import defaultdict
 from pathlib import Path
 
-from ocr_local import detok, make_no_repeat_ngram, norm, reads_code, reads_price, prices
+from ocr_local import crop_box, detok, make_no_repeat_ngram, norm, reads_code, reads_price, prices
 
 REPOS = {"4bit": "sahilchachra/unlimited-ocr-4bit-mlx", "8bit": "sahilchachra/unlimited-ocr-8bit-mlx"}
 MAX_TOKENS = 1024
@@ -70,19 +70,6 @@ def reads_desc(cap, text, k=2):
     from ocr_local import clean
     t = set(re.findall(r"[a-z]{4,}", unicodedata.normalize("NFKD", clean(text)).encode("ascii", "ignore").decode().lower()))
     return reads_price(cap, text) and len(desc_words(cap) & t) >= min(k, len(desc_words(cap)))
-
-
-DET_RE = __import__("re").compile(r"<\|det\|>\w+ \[(\d+), (\d+), (\d+), (\d+)\]<\|/det\|>([^<\n]*)")
-
-
-def crop_box(text, margin=0.08):
-    """Caja (0–1) que une las regiones de texto con números (precio, código); None si no hay o ya es casi toda la foto."""
-    boxes = [tuple(int(v) / 999 for v in m[:4]) for m in DET_RE.findall(text) if any(ch.isdigit() for ch in m[4])]
-    if not boxes:
-        return None
-    x1, y1 = max(0, min(b[0] for b in boxes) - margin), max(0, min(b[1] for b in boxes) - margin)
-    x2, y2 = min(1, max(b[2] for b in boxes) + margin), min(1, max(b[3] for b in boxes) + margin)
-    return None if (x2 - x1) * (y2 - y1) > 0.8 else (x1, y1, x2, y2)
 
 
 def run_crop(caps_path="data/capturas.json"):

@@ -59,4 +59,17 @@ assert sin_precio["decision"] == "revision_manual" and sin_precio["reason_code"]
 for frase in ("Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
               "¿la fachada corresponde a la cadena indicada? ", "Aprueba solo si los tres frentes son claramente correctos."):
     assert frase in PROMPT and frase not in MOBILE_PROMPT, frase
+from ocr_local import crop_box
+box = crop_box("<|det|>text [100, 200, 300, 400]<|/det|>$30.00\n<|det|>text [0, 0, 999, 50]<|/det|>OFERTA")
+assert box and abs(box[0] - (100 / 999 - 0.08)) < 1e-9 and abs(box[3] - (400 / 999 + 0.08)) < 1e-9  # solo la caja con números
+assert crop_box("<|det|>text [0, 0, 999, 999]<|/det|>$30.00") is None  # ya es toda la foto: no vale la pena recortar
+assert crop_box("sin cajas") is None
+# dudas del modelo corroboradas por el OCR local → aprobar; sin corroborar → revisión; el OCR corre una sola vez
+duda13 = {**ok, "decision": "revision_manual", "confidence_score": 0.6}
+lecturas = []
+leer = lambda: lecturas.append(1) or "ARROZ $30.00 7501234567890"
+assert apply_rules(cap13, duda13, ocr=leer)["decision"] == "aprobada" and len(lecturas) == 1
+assert apply_rules(cap13, duda13, ocr=lambda: "ARROZ $30.00")["decision"] == "revision_manual"
+assert apply_rules({**cap13, "capture_store_name": "Walmart"}, duda13, ocr=leer)["decision"] == "revision_manual"
+assert len(lecturas) == 1  # en cadena sin verificación ni se intenta el OCR
 print("ok")
