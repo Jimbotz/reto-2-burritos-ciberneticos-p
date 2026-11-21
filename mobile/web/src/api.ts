@@ -40,7 +40,9 @@ export type Decision = Resultado['decision']
 export type ResumenVersion = {
   descripcion: string; costo_operativo: number; precision_aprobacion: number | null
   distribucion: Partial<Record<Decision, number>>; tokens_por_captura: number | null
+  esperada_vs_predicha: Record<string, number>  // "aprobada->revision_manual": n
 }
+export type Resumen = { generado: string; capturas: number; versiones: Record<string, ResumenVersion> }
 export type ResultadoVersion = {
   decision: Decision; reason_code: string; confidence_score: number; explicacion: string; precio_detectado: number | null
 }

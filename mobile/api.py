@@ -620,6 +620,14 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
             raise HTTPException(404, "Aún no hay comparativo. Genera out/comparativo.json con comparativo.py.")
         return FileResponse(archivo, media_type="application/json")
 
+    @app.get("/api/resumen")
+    def resumen(_=Depends(rol)):
+        # Solo totales por versión (sin datos por captura): es el archivo público del repo.
+        archivo = ROOT / "resultados/resumen.json"
+        if not archivo.is_file():
+            raise HTTPException(404, "Aún no hay resumen. Genéralo con comparativo.py.")
+        return FileResponse(archivo, media_type="application/json")
+
     @app.get("/api/capturas/{id_captura}/foto/{tipo}")
     def ver_foto(id_captura: UUID, tipo: Literal["producto", "etiqueta"], _=Depends(revisor)):
         with conectar(path) as db:

@@ -12,7 +12,7 @@ La app tiene tres pestañas:
 
 - **Capturar** (revisor: **Revisión**): fotos del producto y de la etiqueta, código y precio.
 - **Comparar nuestros productos**: elige una zona (alcaldía) y un producto del catálogo para ver los precios Profeco de esa zona en tres niveles (ver abajo).
-- **Errores corregidos**: los 3 errores más relevantes del modelo anterior que Validat3B ya corrige. Las capturas de pantalla y los textos se editan en `web/src/errores.ts`.
+- **Parte técnica**: exactitud, precisión y sensibilidad de cada versión del motor (de `resultados/resumen.json`, vía `GET /api/resumen`) y los 3 errores más relevantes del modelo anterior que Validat3B ya corrige. Las capturas de pantalla y los textos de los errores se editan en `web/src/errores.ts`.
 
 ## Levantar el piloto
 

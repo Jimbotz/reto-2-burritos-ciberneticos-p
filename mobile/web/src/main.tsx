@@ -76,7 +76,7 @@ function App() {
       <Link to={rol === 'revisor' ? '/revisar' : '/'}>{rol === 'revisor' ? 'Revisión' : 'Capturar'}</Link>
       <Link to="/comparar">Comparar</Link>
       {rol === 'revisor' && <Link to="/comparativo">Versiones</Link>}
-      <Link to="/corregidos">Errores corregidos</Link>
+      <Link to="/corregidos">Parte técnica</Link>
     </div></nav>}
     <main className="main">
       {aviso && <p className="notice" role="status">{aviso}</p>}

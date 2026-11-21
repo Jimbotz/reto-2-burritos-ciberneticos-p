@@ -7,3 +7,4 @@ __pycache__/
 mobile/web/node_modules/
 mobile/web/dist/
 .DS_Store
+/*.zip
