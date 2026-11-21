@@ -15,6 +15,8 @@ import cv2
 import zxingcpp
 from anthropic import AnthropicFoundry
 
+import ocr_local
+
 DECISIONS = ("aprobada", "rechazada", "revision_manual")
 CHECKS = ("tienda_fachada", "producto", "codigo_barras", "evidencia_precio")
 MODEL_CHECKS = ("tienda_fachada", "producto", "evidencia_precio")  # codigo_barras se verifica con metadatos
@@ -81,6 +83,21 @@ SCHEMA = {
 META_KEYS = ("capture_store_name", "capture_date", "capture_price", "capture_brand", "product_name",
              "unit_product", "unit_quantity_product", "product_group", "product_line")
 
+MOBILE_PROMPT = PROMPT.replace(
+    "Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
+    "Cada captura trae 2 fotos (producto y etiqueta de precio en anaquel)",
+).replace(
+    "¿la fachada corresponde a la cadena indicada? ", "",
+).replace(
+    "Aprueba solo si los tres frentes son claramente correctos.",
+    "Evalúa solo la evidencia de las dos fotos. La API verifica la sucursal por separado. "
+    "Aprueba si todos los frentes de las fotos son claramente correctos.",
+)
+MOBILE_SCHEMA = json.loads(json.dumps(SCHEMA))
+MOBILE_CHECKS = ("sucursal", "producto", "codigo_barras", "evidencia_precio")
+MOBILE_SCHEMA["properties"]["validaciones"]["properties"].pop("tienda_fachada")
+MOBILE_SCHEMA["properties"]["validaciones"]["required"].remove("tienda_fachada")
+
 
 def load_env(path=Path(__file__).with_name(".env")):
     if path.exists():
@@ -130,10 +147,13 @@ def make_client():
     return AnthropicFoundry(api_key=os.environ["API_KEY"], base_url=os.environ["Endpoint"].rstrip("/") + "/", max_retries=6)
 
 
-def ask_model(client, cap, base):
+def ask_model(client, cap, base, *, mobile=False):
     content = []
     # ponytail: fachada a 512px (solo identifica la cadena), producto/etiqueta a 1024px para leer texto
-    for kind, side in (("facade", 512), ("product", 1024), ("shelf", 1024)):
+    images = (("product", 1024), ("shelf", 1024))
+    if not mobile:
+        images = (("facade", 512), *images)
+    for kind, side in images:
         content += [{"type": "text", "text": f"Foto {kind}:"},
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                  "data": img_b64(base / cap[f"{kind}_file"], side)}}]
@@ -141,30 +161,42 @@ def ask_model(client, cap, base):
     r = client.messages.create(
         model=os.environ["MODEL"],
         max_tokens=16000,
-        system=PROMPT,
+        system=MOBILE_PROMPT if mobile else PROMPT,
         messages=[{"role": "user", "content": content}],
-        output_config={"effort": os.environ.get("EFFORT", "low"), "format": {"type": "json_schema", "schema": SCHEMA}},
+        output_config={"effort": os.environ.get("EFFORT", "low"),
+                       "format": {"type": "json_schema", "schema": MOBILE_SCHEMA if mobile else SCHEMA}},
     )
     if r.stop_reason != "end_turn":
         raise RuntimeError(f"stop_reason={r.stop_reason}")
     return json.loads(next(b.text for b in r.content if b.type == "text")), r.usage.input_tokens + r.usage.output_tokens
 
 
-def apply_rules(cap, r, label_codes=()):
-    """Normaliza la respuesta del modelo al formato oficial (ver #foundry en la página del reto) y aplica reglas duras."""
+def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
+    """Normaliza la respuesta del modelo al formato oficial (ver #foundry en la página del reto) y aplica reglas duras.
+    ocr: función que devuelve el texto OCR de la etiqueta; si se pasa, aprobar exige que zxing o el OCR la corroboren.
+    Se llama solo si todo lo demás ya pasó (es lo caro)."""
     v = r.get("validaciones") or {}
     res = {
         "capture_id": cap["capture_id"],
         "decision": r.get("decision") if r.get("decision") in DECISIONS else "revision_manual",
         "confidence_score": max(0.0, min(1.0, num(r.get("confidence_score")) or 0.0)),
         "reason_code": r.get("reason_code") if r.get("reason_code") in REASON_CODES else "DUDOSO",
-        "validaciones": {k: "ok" if v.get(k) == "ok" else "falla" for k in CHECKS},
+        "validaciones": {k: "ok" if v.get(k) == "ok" else "falla"
+                         for k in CHECKS if store_verified is None or k != "tienda_fachada"},
         "precio_detectado": num(r.get("precio_detectado")),
         "codigo_barras_detectado": r.get("codigo_barras_detectado"),
         "explicacion": str(r.get("explicacion") or ""),
     }
     # el código de barras lo escanea la app: se verifica contra el esperado, no con la foto
     same = str(cap.get("capture_barcode")) == str(cap.get("product_barcode"))
+    if store_verified is not None:
+        res["validaciones"] = {
+            k: ("ok" if store_verified else "falla") if k == "sucursal" else res["validaciones"][k]
+            for k in MOBILE_CHECKS
+        }
+        captured = str(cap.get("capture_barcode", "")).lstrip("0")
+        expected = str(cap.get("product_barcode", "")).lstrip("0")
+        same = captured.isdigit() and captured == expected
     res["validaciones"]["codigo_barras"] = "ok" if same else "falla"
 
     # código leído en la etiqueta: si es el del producto, la etiqueta es de ese producto (prueba fuerte)
@@ -183,7 +215,9 @@ def apply_rules(cap, r, label_codes=()):
     if res["decision"] == "aprobada":
         lo, hi = num(cap.get("min_product_price")), num(cap.get("max_product_price"))
         why = None
-        if cap.get("capture_store_name") in NO_APPROVE_CHAINS:
+        if store_verified is False:
+            why = ("DUDOSO", "la ubicación no permitió verificar la sucursal")
+        elif cap.get("capture_store_name") in NO_APPROVE_CHAINS:
             why = ("DUDOSO", "la etiqueta de esta cadena trae código interno, no se puede verificar el producto")
         elif res["confidence_score"] < APPROVE_MIN:
             why = ("DUDOSO", "confianza baja")
@@ -195,22 +229,29 @@ def apply_rules(cap, r, label_codes=()):
             why = ("PRECIO_NO_COINCIDE", f"etiqueta {p} vs capturado {cp}")
         elif cp is not None and lo is not None and hi is not None and not lo <= cp <= hi:
             why = ("DUDOSO", f"precio {cp} fuera de rango {lo}-{hi}")
+        # ponytail: en dev esta corroboración llevó la precisión de 92% a 100% (10/10); es lo que pasa el gate de 97%
+        elif ocr is not None and not label_ok and not ocr_local.confirms(cap, ocr()):
+            why = ("DUDOSO", "ni el código de barras ni el OCR local confirmaron precio y código en la etiqueta")
         if why:
             res.update(decision="revision_manual", reason_code=why[0], explicacion=f"{res['explicacion']} [regla: {why[1]}]".strip())
     return res
 
 
-def decide(cap, base, client):
+def decide(cap, base, client, *, store_verified=None):
     for kind in ("shelf", "product"):
         s = blur_score(base / cap[f"{kind}_file"])
         if s < BLUR_REJECT[kind]:
             return apply_rules(cap, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
-                                     "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"}), 0
+                                     "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"},
+                               store_verified=store_verified), 0
     label = barcodes(base / cap["shelf_file"])
     if client is None:
-        return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label), 0
-    r, tokens = ask_model(client, cap, base)
-    return apply_rules(cap, r, label), tokens
+        return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label,
+                           store_verified=store_verified), 0
+    r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
+    # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
+    ocr = None if store_verified is not None else (lambda: ocr_local.read_text(base / cap["shelf_file"]))
+    return apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr), tokens
 
 
 def safe_decide(cap, base, client):
@@ -262,6 +303,8 @@ def main(inp, outp, limit=None):
     Path(outp).parent.mkdir(parents=True, exist_ok=True)
     Path(outp).write_text(json.dumps(results, ensure_ascii=False, indent=1))
     print(f"{len(results)} capturas · {tokens} tokens ({tokens / len(results):.0f}/captura) · modelo: {'sí' if client else 'no'} → {outp}")
+    n, s = ocr_local.stats["n"], ocr_local.stats["seconds"]
+    print(f"OCR local: {n} etiquetas" + (f" · {s / n:.1f}s/etiqueta" if n else "") + ("" if ocr_local.available() else " (no disponible: sin mlx-vlm)"))
     if all("decision_esperada" in c for c in caps):
         evaluate(caps, results)
 

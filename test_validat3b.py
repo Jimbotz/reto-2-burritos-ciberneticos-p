@@ -33,4 +33,21 @@ assert apply_rules(cap, {**dudosa, "precio_detectado": 31}, {"750"})["decision"]
 assert apply_rules(cap, {**dudosa, "validaciones": {**ok["validaciones"], "producto": "falla"}}, {"750"})["decision"] == "revision_manual"
 assert apply_rules({**cap, "capture_store_name": "Bara"}, dudosa, {"750"})["decision"] == "revision_manual"
 assert cost("aprobada", "rechazada") == 3 and cost("rechazada", "aprobada") == 10 and cost("aprobada", "revision_manual") == 1
+movil = apply_rules(cap, ok, store_verified=True)
+assert movil["decision"] == "aprobada" and movil["validaciones"]["sucursal"] == "ok"
+assert "tienda_fachada" not in movil["validaciones"]
+assert apply_rules(cap, ok, store_verified=False)["decision"] == "revision_manual"
+assert apply_rules(cap, dudosa, {"750"}, store_verified=False)["decision"] == "revision_manual"
+assert apply_rules({**cap, "product_barcode": None, "capture_barcode": None},
+                   ok, store_verified=True)["decision"] == "revision_manual"
+# corroboración local: con ocr, aprobar exige zxing O (precio + últimos 6 dígitos del código en el texto OCR)
+cap13 = {**cap, "product_barcode": 7501234567890, "capture_barcode": 7501234567890}
+assert apply_rules(cap13, ok, ocr=lambda: "ARROZ $30.00 7501234567890")["decision"] == "aprobada"
+assert apply_rules(cap13, ok, ocr=lambda: "ARROZ $30.00")["decision"] == "revision_manual"      # falta el código
+assert apply_rules(cap13, ok, ocr=lambda: "ARROZ 567890 $31.00")["decision"] == "revision_manual"  # otro precio
+assert apply_rules(cap13, ok, ocr=lambda: "")["decision"] == "revision_manual"                    # sin OCR → no aprueba
+assert apply_rules(cap13, ok, {"7501234567890"}, ocr=lambda: "")["decision"] == "aprobada"         # zxing basta
+llamadas = []
+apply_rules(cap13, {**ok, "confidence_score": 0.5}, ocr=lambda: llamadas.append(1) or "")
+assert not llamadas  # el OCR (caro) no corre si otra regla ya la mandó a revisión
 print("ok")

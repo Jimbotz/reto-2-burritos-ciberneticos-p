@@ -1,0 +1,173 @@
+[
+  {
+    "tienda": "walmart",
+    "url": "https://www.walmart.com.mx/ip/leche-fresca-lala-entera-1-l/00750102052606",
+    "consultado_en": "2026-11-21T10:53:58-06:00",
+    "http": 200,
+    "estado": "precio",
+    "precios": [
+      {
+        "producto": "Leche fresca Lala fresca entera 1 l",
+        "sku": "00750102052606",
+        "codigos_publicados": {
+          "gtin13": "00750102052606"
+        },
+        "precio_mxn": "34.00",
+        "vendedor": "Walmart",
+        "cp_publicado": "06700",
+        "sucursal_pickup_id_publicada": "3846"
+      }
+    ]
+  },
+  {
+    "tienda": "bodega_aurrera",
+    "url": "https://www.bodegaaurrera.com.mx/ip/leche-fresca-lala-fresca-entera-1-l/00750102052606",
+    "consultado_en": "2026-11-21T10:53:58-06:00",
+    "estado": "bloqueado",
+    "http": 200
+  },
+  {
+    "tienda": "chedraui",
+    "url": "https://www.chedraui.com.mx/leche-entera-lala-fresca-carton-1l-3012008/p",
+    "consultado_en": "2026-11-21T10:53:59-06:00",
+    "http": 200,
+    "estado": "precio",
+    "precios": [
+      {
+        "producto": "Leche Entera Lala Fresca Cartón 1L",
+        "sku": "03012008",
+        "codigos_publicados": {
+          "gtin": "03012008"
+        },
+        "precio_mxn": "34.00",
+        "vendedor": "Chedraui",
+        "cp_publicado": null,
+        "sucursal_pickup_id_publicada": null
+      }
+    ]
+  },
+  {
+    "tienda": "soriana",
+    "url": "https://www.soriana.com/leche-lala-fresca-entera-1-lt/365947.html",
+    "consultado_en": "2026-11-21T10:53:59-06:00",
+    "http": 200,
+    "estado": "precio",
+    "precios": [
+      {
+        "producto": "Leche Lala Fresca Entera 1 lt",
+        "sku": "365947",
+        "codigos_publicados": {},
+        "precio_mxn": "34.90",
+        "vendedor": "Soriana",
+        "cp_publicado": null,
+        "sucursal_pickup_id_publicada": null
+      }
+    ]
+  },
+  {
+    "tienda": "bara",
+    "url": "https://bara.com.mx/",
+    "consultado_en": "2026-11-21T10:54:00-06:00",
+    "http": 200,
+    "estado": "carteles",
+    "vigencia_publicada": "4 de noviembre al 1 de diciembre de 2026.",
+    "carteles": [
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/1-POST-PRECIOS_OCTUBRE-07.png",
+        "requiere_revision": true,
+        "producto": "Agua BONAMARK 500 ml",
+        "importe_ocr": "$350"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/2-POST-PRECIOS_OCTUBRE-03.png",
+        "requiere_revision": true,
+        "producto": "Arroz Extra BONAMARK 900g",
+        "importe_ocr": "$1300"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/3-POST-PRECIOS_OCTUBRE-02.png",
+        "requiere_revision": true,
+        "producto": "Leche Entera o Deslactosada BONAMARK1L",
+        "importe_ocr": "$20.",
+        "precio_mxn_candidato": "20.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/4-POST-PRECIOS_OCTUBRE-01.png",
+        "requiere_revision": true,
+        "producto": "Jamón de pierna BONAMARK 225 g",
+        "importe_ocr": "$25",
+        "precio_mxn_candidato": "25.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/5-POST-PRECIOS_OCTUBRE-09.png",
+        "requiere_revision": true,
+        "producto": "Papel Higénico BONAMARK 4 rollos/600 hojas",
+        "importe_ocr": "$25.",
+        "precio_mxn_candidato": "25.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/6-POST-PRECIOS_OCTUBRE-06.png",
+        "requiere_revision": true,
+        "producto": "Aceite Mixto BONAMARK 800 ml",
+        "importe_ocr": "$26",
+        "precio_mxn_candidato": "26.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/7-POST-PRECIOS_OCTUBRE-10.png",
+        "requiere_revision": true,
+        "producto": "Salchicha Clásica Siprecio 667 g",
+        "importe_ocr": "$30.",
+        "precio_mxn_candidato": "30.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/8-POST-PRECIOS_OCTUBRE-04.png",
+        "requiere_revision": true,
+        "producto": "Queso Panela BONAMARK 200 g",
+        "importe_ocr": "$30.",
+        "precio_mxn_candidato": "30.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/09/9-POST-PRECIOS_OCTUBRE-08.png",
+        "requiere_revision": true,
+        "producto": "Detergente líquido ropa color Siprecio 2 L",
+        "importe_ocr": "$30.",
+        "precio_mxn_candidato": "30.00"
+      },
+      {
+        "imagen_url": "https://bara.com.mx/wp-content/uploads/2026/11/POST-PRECIOS_HUEVO-05.png",
+        "requiere_revision": true,
+        "producto": "Huevo Blanco BONAMARK 30 piezas",
+        "importe_ocr": "$64",
+        "precio_mxn_candidato": "64.00"
+      }
+    ]
+  },
+  {
+    "tienda": "tiendas_3b",
+    "url": "https://tiendas3b.com/promociones-tiendas-3-b-folleto-mensual/",
+    "consultado_en": "2026-11-21T10:54:07-06:00",
+    "http": 200,
+    "estado": "folleto",
+    "folletos": [
+      "https://heyzine.com/flip-book/c4bbd6856b.html",
+      "https://heyzine.com/flip-book/4712fb4bfd.html",
+      "https://heyzine.com/flip-book/9305135120.html"
+    ]
+  },
+  {
+    "tienda": "heb",
+    "url": "https://www.heb.com.mx/lala-leche-fresca-entera-carton-con-tapa-1-l-2767/p",
+    "consultado_en": "2026-11-21T10:54:07-06:00",
+    "estado": "error_http",
+    "http": 403,
+    "error": "Forbidden"
+  },
+  {
+    "tienda": "la_comer",
+    "url": "https://www.lacomer.com.mx/lacomer/",
+    "consultado_en": "2026-11-21T10:54:07-06:00",
+    "http": 200,
+    "estado": "sin_precio_estructurado",
+    "precios": []
+  }
+]

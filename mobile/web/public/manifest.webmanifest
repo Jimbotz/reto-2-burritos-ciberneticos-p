@@ -1,0 +1,10 @@
+{
+  "name": "Validat3B · Captura en campo",
+  "short_name": "Validat3B",
+  "id": "/",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f6ef",
+  "theme_color": "#142f27",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

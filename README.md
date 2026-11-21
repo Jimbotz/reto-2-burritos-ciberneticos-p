@@ -24,3 +24,5 @@ Datos (no se suben al repo): descomprimir ambos zips del reto en `data/` para qu
 ```
 
 Con datos etiquetados imprime costo operativo, precisión de aprobación y la matriz esperada → predicha.
+
+La [app móvil de campo](mobile/README.md) permite iniciar una visita por sucursal y registrar producto y etiqueta desde un teléfono conectado a la misma red.

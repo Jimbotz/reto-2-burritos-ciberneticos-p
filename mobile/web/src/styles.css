@@ -1,0 +1,67 @@
+:root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #183029;
+  background: #f3f6ef;
+  font-synthesis: none;
+  --forest: #142f27;
+  --lime: #ceee79;
+  --muted: #4d6259;
+  --border: #d6e1d5;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+h1, h2, p { margin: 0; }
+h1 { font-size: clamp(1.6rem, 6vw, 2.25rem); letter-spacing: -.035em; line-height: 1.1; }
+h2 { font-size: 1.15rem; }
+p { line-height: 1.52; }
+a { color: inherit; }
+small { display: block; color: var(--muted); font-size: .83rem; line-height: 1.35; }
+
+.top { background: var(--forest); color: #fff; }
+.top-inner { max-width: 730px; margin: auto; padding: .65rem 1rem; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: inline-flex; align-items: center; gap: .45rem; text-decoration: none; font-weight: 800; letter-spacing: -.035em; font-size: 1.2rem; }
+.top-action { color: white; border-color: #748e81; background: transparent; }
+.main { max-width: 690px; margin: 0 auto; padding: 1rem 1rem max(1.5rem, env(safe-area-inset-bottom)); display: grid; gap: .9rem; }
+.panel { border: 1px solid var(--border); background: #fff; border-radius: 17px; padding: clamp(1rem, 4vw, 1.5rem); display: grid; gap: 1rem; min-width: 0; }
+.panel.compact { gap: .65rem; }
+.acceso { margin-top: clamp(0rem, 4vh, 2rem); }
+.muted { color: var(--muted); }
+.stack { display: grid; gap: .9rem; }
+label { display: grid; gap: .4rem; min-width: 0; font-size: .94rem; font-weight: 650; }
+input, select, textarea, button, .button { font: inherit; }
+input, select, textarea { appearance: auto; padding: .72rem; width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 9px; background: white; color: inherit; font-size: 1rem; }
+button, .button { min-height: 44px; padding: .55rem .85rem; border: 1px solid #b7c8b7; border-radius: 9px; background: #fff; color: var(--forest); font-weight: 700; cursor: pointer; text-decoration: none; }
+button:disabled { opacity: .55; cursor: default; }
+.primary { background: var(--lime); border-color: #adc754; color: var(--forest); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+  outline: 2px solid #31745b; outline-offset: 2px;
+}
+.full { width: 100%; }
+.input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .55rem; }
+.input-row button { padding-inline: .6rem; white-space: nowrap; }
+.notice { padding: .7rem .8rem; background: #edf4e4; border-radius: 9px; overflow-wrap: anywhere; }
+.notice small { margin-top: .22rem; }
+.sucursales { list-style: none; display: grid; gap: .55rem; padding: 0; margin: 0; }
+.store { display: flex; align-items: center; justify-content: space-between; gap: .55rem; text-align: left; padding: .65rem .75rem; }
+.store small { font-weight: 450; margin-top: .25rem; }
+.badge { padding: .28rem .45rem; background: var(--lime); border-radius: 7px; font-size: .75rem; white-space: nowrap; }
+details { border-top: 1px solid var(--border); padding-top: .75rem; }
+summary { cursor: pointer; font-weight: 650; min-height: 30px; }
+details[open] summary { margin-bottom: .6rem; }
+.visit { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .65rem .85rem; border-radius: 10px; background: #e6eee3; }
+.visit strong { display: block; }
+.fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.foto { position: relative; padding: .6rem; background: #f3f6ef; border-radius: 9px; cursor: pointer; }
+.foto input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.foto:focus-within { outline: 2px solid #31745b; outline-offset: 2px; }
+.foto-accion { min-height: 44px; display: grid; place-items: center; border: 1px solid #b7c8b7; border-radius: 8px; background: white; text-align: center; }
+.foto img, .evidencia { width: 100%; height: 125px; object-fit: contain; }
+.precio { font-size: 1.3rem; font-weight: 700; max-width: 200px; }
+.choice { text-align: left; margin-top: .5rem; }
+.acciones { display: flex; gap: .5rem; justify-content: flex-end; }
+@media (max-width: 370px) {
+  .main { padding-inline: .65rem; }
+  .panel { padding-inline: .75rem; }
+  .foto { padding: .45rem; }
+}
