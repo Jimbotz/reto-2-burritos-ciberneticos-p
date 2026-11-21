@@ -57,6 +57,61 @@ def analyze(caps, rows):
     return res
 
 
+def desc_words(cap):
+    """Palabras significativas (≥4 letras) del producto esperado y la marca, sin acentos."""
+    import re, unicodedata
+    s = unicodedata.normalize("NFKD", f"{cap['product_name']} {cap['capture_brand']}").encode("ascii", "ignore").decode().lower()
+    return {w for w in re.findall(r"[a-z]{4,}", s)}
+
+
+def reads_desc(cap, text, k=2):
+    """La etiqueta trae el precio capturado y ≥k palabras de la descripción (para etiquetas sin dígitos del código)."""
+    import re, unicodedata
+    from ocr_local import clean
+    t = set(re.findall(r"[a-z]{4,}", unicodedata.normalize("NFKD", clean(text)).encode("ascii", "ignore").decode().lower()))
+    return reads_price(cap, text) and len(desc_words(cap) & t) >= min(k, len(desc_words(cap)))
+
+
+DET_RE = __import__("re").compile(r"<\|det\|>\w+ \[(\d+), (\d+), (\d+), (\d+)\]<\|/det\|>([^<\n]*)")
+
+
+def crop_box(text, margin=0.08):
+    """Caja (0–1) que une las regiones de texto con números (precio, código); None si no hay o ya es casi toda la foto."""
+    boxes = [tuple(int(v) / 999 for v in m[:4]) for m in DET_RE.findall(text) if any(ch.isdigit() for ch in m[4])]
+    if not boxes:
+        return None
+    x1, y1 = max(0, min(b[0] for b in boxes) - margin), max(0, min(b[1] for b in boxes) - margin)
+    x2, y2 = min(1, max(b[2] for b in boxes) + margin), min(1, max(b[3] for b in boxes) + margin)
+    return None if (x2 - x1) * (y2 - y1) > 0.8 else (x1, y1, x2, y2)
+
+
+def run_crop(caps_path="data/capturas.json"):
+    """Segunda lectura sobre el recorte ampliado de la zona con números. Solo donde la 1a lectura no corroboró."""
+    import cv2
+    import ocr_local
+    caps = json.loads(Path(caps_path).read_text())
+    txt, out = shelf_texts(), Path("out/ocr_4bit_crop.jsonl")
+    done = {r["capture_id"] for r in map(json.loads, out.open())} if out.exists() else set()
+    Path("out/crops").mkdir(parents=True, exist_ok=True)
+    with out.open("a") as fh:
+        for c in caps:
+            i = c["capture_id"]
+            if i in done or i not in txt or ocr_local.confirms(c, txt[i]) or not (box := crop_box(txt[i])):
+                continue
+            img = cv2.imread(f"data/{c['shelf_file']}")
+            h, w = img.shape[:2]
+            crop = img[int(box[1] * h):int(box[3] * h), int(box[0] * w):int(box[2] * w)]
+            s = 1280 / max(crop.shape[:2])  # ampliar (o reducir) el recorte a 1280 px de lado mayor
+            crop = cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
+            path = Path(f"out/crops/{i}.jpg")
+            cv2.imwrite(str(path), crop)
+            t0 = time.time()
+            text = ocr_local.read_text(path)
+            row = dict(capture_id=i, seconds=round(time.time() - t0, 2), box=[round(v, 3) for v in box], text=text)
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n"); fh.flush()
+            print(f"[crop] {i} {row['seconds']:5.1f}s confirma={ocr_local.confirms(c, text)}", flush=True)
+
+
 def shelf_texts(path="out/ocr_4bit.jsonl", prompt="Free OCR."):
     """capture_id → texto OCR de la etiqueta (para simular sin volver a correr el OCR)."""
     return {r["capture_id"]: r["text"] for r in map(json.loads, open(path)) if r["prompt"] == prompt and r["kind"] == "shelf"}

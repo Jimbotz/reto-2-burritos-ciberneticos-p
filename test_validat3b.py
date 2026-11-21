@@ -1,4 +1,4 @@
-from validat3b import apply_rules, cost
+from validat3b import MOBILE_PROMPT, PROMPT, apply_rules, cost
 
 cap = {"capture_id": "X", "capture_price": 30.0, "min_product_price": 20.0, "max_product_price": 40.0,
        "capture_barcode": 750, "product_barcode": 750}
@@ -50,4 +50,13 @@ assert apply_rules(cap13, ok, {"7501234567890"}, ocr=lambda: "")["decision"] == 
 llamadas = []
 apply_rules(cap13, {**ok, "confidence_score": 0.5}, ocr=lambda: llamadas.append(1) or "")
 assert not llamadas  # el OCR (caro) no corre si otra regla ya la mandó a revisión
+# falta etiqueta o precio unitario (dicho por el modelo) → rechazo; la misma etiqueta puesta por nuestra regla → revisión
+assert apply_rules(cap, {**dudosa, "reason_code": "SIN_PRECIO_UNITARIO"})["decision"] == "rechazada"
+assert apply_rules(cap, {**dudosa, "reason_code": "SIN_ETIQUETA_PRECIO"})["decision"] == "rechazada"
+sin_precio = apply_rules(cap, {**ok, "precio_detectado": None})
+assert sin_precio["decision"] == "revision_manual" and sin_precio["reason_code"] == "SIN_ETIQUETA_PRECIO"
+# la app móvil arma su prompt reemplazando estas frases: si cambian, su prompt se queda viejo sin avisar
+for frase in ("Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
+              "¿la fachada corresponde a la cadena indicada? ", "Aprueba solo si los tres frentes son claramente correctos."):
+    assert frase in PROMPT and frase not in MOBILE_PROMPT, frase
 print("ok")
