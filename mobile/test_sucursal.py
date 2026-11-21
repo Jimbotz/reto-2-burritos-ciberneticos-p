@@ -2,11 +2,16 @@
 Coordenadas reales de la visita de campo a Mariano Escobedo (fotos de test/)."""
 import csv
 import io
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import time
+from uuid import uuid4
 
-from mobile.api import Posicion, candidatas, foto_en_sucursal, sugerida
+from fastapi.testclient import TestClient
+from PIL import Image
+
+from mobile.api import Posicion, candidatas, create_app, foto_en_sucursal, sugerida
 from mobile.catalogos import fichas_denue, guardar_sucursal
 from mobile.db import conectar, inicializar
 
@@ -45,4 +50,18 @@ with TemporaryDirectory() as temporal:
         assert foto_en_sucursal(db, ((19.431069, -99.181083), 21.2), visita)       # IMG_4022, producto dentro de la 3B
         assert not foto_en_sucursal(db, ((19.430839, -99.180847), 24.0), visita)   # IMG_4032, Doritos en el 7-Eleven
         assert not foto_en_sucursal(db, ((19.431033, -99.180917), 172.5), visita)  # IMG_4030, GPS de ±172 m
+
+    foto = io.BytesIO()
+    Image.new("RGB", (160, 160), "white").save(foto, format="JPEG")
+    adjuntos = {rol: (f"{rol}.jpg", foto.getvalue(), "image/jpeg") for rol in ("producto", "etiqueta")}
+    with TestClient(create_app(temporal, local=True, operator_key="op-prueba", reviewer_key="rev-prueba")) as web:
+        assert web.post("/api/sesion", json={"clave": "op-prueba"}).status_code == 200
+        for posicion, ubicacion in ((None, "manual"), (dentro.model_dump(), "verificada")):
+            visita = web.post("/api/visitas", json={"sucursal_id": "denue:1", "posicion": posicion})
+            assert visita.status_code == 201 and visita.json()["ubicacion"] == ubicacion
+            captura = web.post("/api/capturas", data={"datos": json.dumps({
+                "id": str(uuid4()), "visita_id": visita.json()["id"], "codigo": "12345678",
+                "precio": "27.00", "capturada_en": time(),
+            })}, files=adjuntos)
+            assert captura.status_code == 202
 print("ok")

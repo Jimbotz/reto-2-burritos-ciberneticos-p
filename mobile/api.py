@@ -558,9 +558,9 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         huella = sha256(json.dumps([str(body.visita_id), body.sku, body.codigo, precio, hash_producto, hash_etiqueta])
                         .encode()).hexdigest()
         verificada = v["ubicacion"] == "verificada" and body.capturada_en - v["creada"] <= 4 * 3600
-        if verificada and (fotos := [f for f in (gps_producto, gps_etiqueta) if f]):
+        if verificada and (ubicaciones_fotos := [gps for gps in (gps_producto, gps_etiqueta) if gps]):
             with conectar(path) as db:
-                verificada = all(foto_en_sucursal(db, f, v) for f in fotos)
+                verificada = all(foto_en_sucursal(db, gps, v) for gps in ubicaciones_fotos)
         cap = json.loads(p["datos"]) if p else {}
         cap.update(capture_id=id_captura, capture_store_name=v["cadena"],
                    capture_date=datetime.fromtimestamp(body.capturada_en, timezone.utc).isoformat(),
