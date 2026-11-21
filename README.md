@@ -2,7 +2,7 @@
 
 Motor que decide `aprobada` / `rechazada` / `revision_manual` para cada captura de precio (Reto 2, Hackatón Tiendas 3B).
 
-Flujo por captura: filtro local de nitidez (OpenCV, sin tokens) → Claude en Azure AI Foundry con las 3 fotos + metadatos → reglas duras (confianza, precio de etiqueta = capturado, rango de precio). Ante duda o error, `revision_manual`.
+Flujo por captura: filtro local de nitidez (OpenCV) y lectura local del código de barras de la etiqueta (zxing-cpp), sin tokens → Claude en Azure AI Foundry con las 3 fotos + metadatos → reglas duras (confianza, precio de etiqueta = capturado, rango de precio, no aprobar en cadenas cuya etiqueta trae código interno; aprobar si la etiqueta trae el código del producto y todo cuadra). Ante duda o error, `revision_manual`.
 
 ## Setup
 

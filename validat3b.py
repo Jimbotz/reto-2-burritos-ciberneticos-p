@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
+import zxingcpp
 from anthropic import AnthropicFoundry
 
 DECISIONS = ("aprobada", "rechazada", "revision_manual")
@@ -38,15 +39,18 @@ REASON_CODES = {
 # ponytail: calibrado en dev (aprobadas: nitidez mín 38 shelf, 31 product). Re-tunear con el set de validación.
 BLUR_REJECT = {"shelf": 35.0, "product": 25.0}
 APPROVE_MIN = 0.85  # aprobar con menos confianza que esto → revision_manual (gate de precisión ≥97%)
+# ponytail: en dev 0 de 52 aprobadas en estas cadenas; su etiqueta trae código interno (400…/401…), no el del producto,
+# así que no se puede verificar. No aprobar cuesta 1 punto, aprobar mal cuesta 10. Revalidar si el set ciego trae otras cadenas.
+NO_APPROVE_CHAINS = {"Walmart", "Bodega Aurrera", "Bara"}
 
 PROMPT = """Eres analista senior de auditoría de precios de Tiendas 3B. Revisas capturas de precio hechas en campo en tiendas de la competencia. Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel) y los metadatos del producto esperado.
 
 Revisa tres frentes:
-A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? ¿se ve completo y legible?
-B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas y cercanas? ¿alguna es foto de la pantalla de otro dispositivo?
-C. Evidencia de precio: ¿hay etiqueta de precio visible y legible? ¿qué precio dice? ¿es regular, oferta o por volumen?
+A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? El producto debe verse completo, enfocado y como protagonista de la foto; si aparece amontonado entre otros o no se distingue cuál es, es falla.
+B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas? ¿alguna es foto de la pantalla de otro dispositivo? Las fotos deben ser CERCANAS: si la etiqueta o el producto se ven pequeños dentro de la foto (tomados de lejos, con mucho anaquel alrededor), es falla con CAPTURA_LEJANA aunque se alcance a leer el precio.
+C. Evidencia de precio: la etiqueta debe ocupar buena parte de su foto y su descripción y precio deben leerse sin esfuerzo. ¿Qué precio dice? ¿Es regular, oferta o por volumen?
 
-Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala es el peor error posible.
+Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala cuesta 10 veces más que mandarla a revisión: ante cualquier duda, no apruebes.
 confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
 
 reason_code válidos:
@@ -107,6 +111,11 @@ def blur_score(path):
     return cv2.Laplacian(g, cv2.CV_64F).var()
 
 
+def barcodes(path):
+    """Códigos de barras legibles en la foto (lectura local con zxing-cpp, cero tokens)."""
+    return {b.text.lstrip("0") for b in zxingcpp.read_barcodes(read(path)) if b.text.isdigit()}
+
+
 def img_b64(path, max_side):
     img = read(path)
     s = max_side / max(img.shape[:2])
@@ -141,7 +150,7 @@ def ask_model(client, cap, base):
     return json.loads(next(b.text for b in r.content if b.type == "text")), r.usage.input_tokens + r.usage.output_tokens
 
 
-def apply_rules(cap, r):
+def apply_rules(cap, r, label_codes=()):
     """Normaliza la respuesta del modelo al formato oficial (ver #foundry en la página del reto) y aplica reglas duras."""
     v = r.get("validaciones") or {}
     res = {
@@ -158,11 +167,25 @@ def apply_rules(cap, r):
     same = str(cap.get("capture_barcode")) == str(cap.get("product_barcode"))
     res["validaciones"]["codigo_barras"] = "ok" if same else "falla"
 
+    # código leído en la etiqueta: si es el del producto, la etiqueta es de ese producto (prueba fuerte)
+    exp = str(cap.get("product_barcode")).lstrip("0")
+    label_ok = exp in label_codes
+    if label_codes:
+        res["codigo_barras_detectado"] = exp if label_ok else sorted(label_codes)[0]
+    p, cp = res["precio_detectado"], num(cap.get("capture_price"))
+
+    # el modelo dudó, pero la etiqueta trae el código del producto, el precio cuadra y no vio fallas → aprobar
+    if (res["decision"] == "revision_manual" and label_ok and p is not None and cp is not None and abs(p - cp) <= 0.01
+            and all(x == "ok" for x in res["validaciones"].values())):
+        res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
+                   explicacion=f"{res['explicacion']} [regla: el código de la etiqueta coincide con el producto]".strip())
+
     if res["decision"] == "aprobada":
-        p, cp = res["precio_detectado"], num(cap.get("capture_price"))
         lo, hi = num(cap.get("min_product_price")), num(cap.get("max_product_price"))
         why = None
-        if res["confidence_score"] < APPROVE_MIN:
+        if cap.get("capture_store_name") in NO_APPROVE_CHAINS:
+            why = ("DUDOSO", "la etiqueta de esta cadena trae código interno, no se puede verificar el producto")
+        elif res["confidence_score"] < APPROVE_MIN:
             why = ("DUDOSO", "confianza baja")
         elif any(x != "ok" for x in res["validaciones"].values()):
             why = ("DUDOSO", "alguna validación no pasó")
@@ -183,10 +206,11 @@ def decide(cap, base, client):
         if s < BLUR_REJECT[kind]:
             return apply_rules(cap, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
                                      "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"}), 0
+    label = barcodes(base / cap["shelf_file"])
     if client is None:
-        return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}), 0
+        return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label), 0
     r, tokens = ask_model(client, cap, base)
-    return apply_rules(cap, r), tokens
+    return apply_rules(cap, r, label), tokens
 
 
 def safe_decide(cap, base, client):
