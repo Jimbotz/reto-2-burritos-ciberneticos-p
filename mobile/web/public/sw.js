@@ -1,4 +1,4 @@
-const CACHE = 'validat3b-campo-v1';
+const CACHE = 'validat3b-campo-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { createRootRoute, createRoute, createRouter, Link, Outlet, RouterProvider } from '@tanstack/react-router'
 import { api, ErrorApi, pesos, post, type Captura, type Rol } from './api'
 import { Campo } from './Campo'
+import logo3b from './assets/logo-3b.png'
 import './styles.css'
 
 const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -58,7 +59,7 @@ function App() {
 
   return <>
     <header className="top"><div className="top-inner">
-      <Link to="/" className="brand"><img src="/icon.svg" width="36" height="36" alt="" />Validat3B</Link>
+      <Link to="/" className="brand"><img src={logo3b} width="40" height="40" alt="Tiendas 3B" />Validat3B</Link>
       {rol && <button className="top-action" onClick={() => void salir()}>Salir</button>}
     </div></header>
     <main className="main">
