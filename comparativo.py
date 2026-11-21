@@ -19,6 +19,8 @@ VERSIONES = {
     "v1": ("out/sim_final.json", "Prompt original + reglas (cadena, nitidez, precio, corroboración zxing/OCR, dudas corroboradas)"),
     "v2": ("out/v2.json", "v1 + equivalencias de medidas (kg/g, L/ml, drenado/neto, promos) + usar la etiqueta del producto correcto"),
     "v2.1": ("out/v2_1.json", "v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA"),
+    "v1+rechazo": ("out/v1_rechazo.json", "v1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto"),
+    "v2.1+rechazo": ("out/v2_1_rechazo.json", "v2.1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto"),
 }
 KEYS = ("decision", "confidence_score", "reason_code", "validaciones", "precio_detectado", "explicacion")
 MARCA = {"aprobar": "aprobada", "rechazar": "rechazada", "revision": "revision_manual"}

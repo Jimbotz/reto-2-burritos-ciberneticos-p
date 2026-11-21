@@ -6,7 +6,7 @@ Uso:
 Lee .env (Endpoint, API_KEY, MODEL) y LLAMA AL MODELO. Agrega --local para correr solo los filtros locales (cero tokens).
 Si las capturas traen `decision_esperada`, imprime costo operativo y precisión.
 """
-import base64, json, os, sys
+import base64, json, os, re, sys
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from functools import cache
@@ -42,6 +42,12 @@ REASON_CODES = {
 # ponytail: calibrado en dev (aprobadas: nitidez mín 38 shelf, 31 product). Re-tunear con el set de validación.
 BLUR_REJECT = {"shelf": 35.0, "product": 25.0}
 APPROVE_MIN = 0.85  # aprobar con menos confianza que esto → revision_manual (gate de precisión ≥97%)
+# Política del equipo: evidencia de mala calidad se rechaza para volver a capturar, no se manda a revisión.
+# ponytail: busca la duda visual en la explicación libre del modelo; cambiar a un campo estructurado del modelo
+# (calidad de cada foto) cuando se valide con una corrida. Dudas de contenido (vigencia, oferta) NO entran aquí.
+DUDA_VISUAL = re.compile(r"peque|lejos|lejan|borros|desenfoc|ilegible|no se (lee|ve\b|distingue|alcanza)"
+                         r"|no (es|son|está|están) (legible|visible)|no se puede (leer|asociar|distinguir|ver\b)"
+                         r"|no queda claro|tapad|cortad|no se aprecia", re.I)
 # ponytail: en dev 0 de 52 aprobadas en estas cadenas; su etiqueta trae código interno (400…/401…), no el del producto,
 # así que no se puede verificar. No aprobar cuesta 1 punto, aprobar mal cuesta 10. Revalidar si el set ciego trae otras cadenas.
 NO_APPROVE_CHAINS = {"Walmart", "Bodega Aurrera", "Bara"}
@@ -60,11 +66,13 @@ reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
 
 # Versiones del prompt (elegir con VERSION=… en el entorno; resultados comparados en resultados/resumen.json):
-#   v1   = prompt original. Default: mejor costo medido.
+#   v1   = prompt original.
 #   v2   = v1 + equivalencias de medidas + usar la etiqueta del producto correcto (rechazó 1 válida de más y dejó de
 #          rechazar fotos lejanas que v1 rechazaba "por falta de precio unitario").
 #   v2.1 = v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA (sin lo de la etiqueta vecina).
-VERSION = os.environ.get("VERSION", "v1")
+#          Default: con la regla de rechazo por mala calidad es la de menor costo (47 o 63 según cuánto cueste rechazar
+#          una 'revisión' del analista; v1 da 52 o 67).
+VERSION = os.environ.get("VERSION", "v2.1")
 EQUIVALENCIAS = ("Contenido: 1 kg = 1000 g y 1 L = 1000 ml (por ejemplo, 1.1 L = 1100 ml). El empaque puede mostrar contenido "
                  "neto y masa drenada; cualquiera de los dos puede ser el esperado. Un extra de promoción (por ejemplo «400 g + "
                  "30 g gratis») es el mismo producto. Compara en la misma unidad antes de marcar falla.\n")
@@ -271,6 +279,13 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
         if why_up:
             res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
                        explicacion=f"{res['explicacion']} [regla: el modelo dudó, pero {why_up}]".strip())
+
+    # el modelo dudó por la calidad de la foto (etiqueta pequeña, borrosa, ilegible…) → rechazar para recapturar
+    if (res["decision"] == "revision_manual" and r.get("decision") == "revision_manual"
+            and DUDA_VISUAL.search(str(r.get("explicacion") or ""))):
+        code = "CAPTURA_BORROSA" if re.search(r"borros|desenfoc", str(r.get("explicacion")), re.I) else "CAPTURA_LEJANA"
+        res.update(decision="rechazada", reason_code=code,
+                   explicacion=f"{res['explicacion']} [regla: evidencia de mala calidad: se rechaza para volver a capturar]".strip())
 
     if res["decision"] == "aprobada":
         lo, hi = num(cap.get("min_product_price")), num(cap.get("max_product_price"))

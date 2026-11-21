@@ -1,5 +1,5 @@
 {
- "generado": "2026-11-21T20:10:19+00:00",
+ "generado": "2026-11-21T20:42:54+00:00",
  "capturas": 100,
  "analista": {
   "revision_manual": 33,
@@ -67,6 +67,48 @@
     "rechazada->revision_manual": 13,
     "revision_manual->rechazada": 7,
     "revision_manual->revision_manual": 26
+   },
+   "tokens_por_captura": 4038
+  },
+  "v1+rechazo": {
+   "descripcion": "v1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto",
+   "capturas": 100,
+   "costo_operativo": 52,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "revision_manual": 40,
+    "rechazada": 46,
+    "aprobada": 14
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 14,
+    "aprobada->rechazada": 4,
+    "aprobada->revision_manual": 15,
+    "rechazada->rechazada": 27,
+    "rechazada->revision_manual": 7,
+    "revision_manual->rechazada": 15,
+    "revision_manual->revision_manual": 18
+   },
+   "tokens_por_captura": null
+  },
+  "v2.1+rechazo": {
+   "descripcion": "v2.1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto",
+   "capturas": 100,
+   "costo_operativo": 47,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "rechazada": 50,
+    "revision_manual": 35,
+    "aprobada": 15
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 15,
+    "aprobada->rechazada": 4,
+    "aprobada->revision_manual": 14,
+    "rechazada->rechazada": 30,
+    "rechazada->revision_manual": 4,
+    "revision_manual->rechazada": 16,
+    "revision_manual->revision_manual": 17
    },
    "tokens_por_captura": 4038
   }

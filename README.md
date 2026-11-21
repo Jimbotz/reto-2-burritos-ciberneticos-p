@@ -28,6 +28,8 @@ VERSION=v2.1 .venv/bin/python validat3b.py data/capturas.json out/v2_1.json  # v
 
 Con datos etiquetados imprime costo operativo, precisión de aprobación y la matriz esperada → predicha.
 
+Versión por defecto: `v2.1` (`VERSION=v1|v2|v2.1`). Política: si el modelo duda por la calidad de la foto (lejana, borrosa, ilegible), la captura se **rechaza para volver a capturarla** en lugar de mandarla a revisión.
+
 La [app móvil de campo](mobile/README.md) permite iniciar una visita por sucursal y registrar producto y etiqueta desde un teléfono conectado a la misma red.
 
 ## Resultados

@@ -98,4 +98,11 @@ cadena = salida_web.registro({**cw, "capture_store_name": "Walmart"}, apply_rule
                              {"nitidez": {}, "codigos_etiqueta": ["401013049343"], "modelo": True})
 assert any("código interno" in x["mensaje"] for x in cadena["hallazgos"]) and "analista" in cadena["accion_sugerida"]
 assert salida_web.registro(cw, apply_rules(cw, ok, {"7501234567890"}), {"modelo": True})["accion_sugerida"] is None
+# política: duda del modelo por mala calidad de foto → rechazo para recapturar; duda de contenido → sigue en revisión
+duda_foto = {**dudosa, "explicacion": "La etiqueta está pequeña y no se lee bien el precio unitario."}
+r_foto = apply_rules(cap, duda_foto)
+assert r_foto["decision"] == "rechazada" and r_foto["reason_code"] == "CAPTURA_LEJANA"
+assert apply_rules(cap, {**dudosa, "explicacion": "La foto del producto está borrosa."})["reason_code"] == "CAPTURA_BORROSA"
+assert apply_rules(cap, {**dudosa, "explicacion": "No se puede confirmar si la oferta sigue vigente."})["decision"] == "revision_manual"
+assert apply_rules({**cap, "capture_store_name": "Walmart"}, ok)["decision"] == "revision_manual"  # el texto de la regla de cadena no cuenta
 print("ok")
