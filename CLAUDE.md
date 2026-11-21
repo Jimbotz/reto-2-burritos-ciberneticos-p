@@ -14,6 +14,7 @@ cp .env.example .env                       # Endpoint, MODEL, API_KEY (vacía = 
 
 .venv/bin/python test_validat3b.py         # reglas de apply_rules(); sin datos ni credenciales, imprime "ok"
 .venv/bin/python scrapping/test_probar.py  # pruebas del scraper
+.venv/bin/python -m mobile.test_comparar   # comparación Profeco por zona (SQLite temporal)
 .venv/bin/python validat3b.py ping                                       # conectividad Foundry
 .venv/bin/python validat3b.py data/capturas.json out/local.json --local  # solo filtros locales, cero tokens
 .venv/bin/python validat3b.py data/capturas.json out/resultados.json 10  # primeras 10 (gasta tokens)

@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura, type Config,
   type Posicion, type Producto, type Referencia, type Sucursal, type Visita } from './api'
 import { borradores, borrarBorrador, guardarBorrador, uuid } from './borradores'
+import { TresB } from './TresB'
 
-const decisiones = { aprobada: 'Aprobada', rechazada: 'Rechazada', revision_manual: 'Revisión manual' }
+const decisiones = { aprobada: '✓ Aprobada', rechazada: '✕ Rechazada', revision_manual: '! Revisión manual' }
 const mensaje = (error: unknown) => error instanceof ErrorApi ? error.message : 'No se pudo conectar con el servidor.'
 const ahora = () => Date.now() / 1000
 
@@ -109,10 +110,10 @@ function Foto({ label, file, onFile }: { label: string; file: File | null; onFil
     setPreview(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
-  return <label className="foto">
-    <span>{label}</span>
-    {preview && <img src={preview} alt={label} />}
-    <span className="foto-accion">{file ? 'Cambiar foto' : 'Tomar foto'}</span>
+  return <label className={file ? 'foto con-foto' : 'foto'}>
+    <span className="foto-titulo">{label}</span>
+    {preview ? <img src={preview} alt={`Foto: ${label}`} /> : <span className="foto-vacia" aria-hidden="true" />}
+    <span className="foto-accion">{file ? 'Cambiar' : 'Tomar foto'}</span>
     <input aria-label={label} key={file ? 'con-foto' : 'sin-foto'} type="file" accept="image/*" capture="environment"
       onChange={(event) => onFile(event.currentTarget.files?.[0] || null)} />
   </label>
@@ -167,7 +168,7 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
 
   async function enviar(event: FormEvent) {
     event.preventDefault()
-    if (!producto || !etiqueta) { setEstado('Agrega las dos fotos para guardar la captura.'); return }
+    if (!producto || !etiqueta) { setEstado('Agrega la foto del producto y la de la etiqueta para guardar la captura.'); return }
     const pesosTexto = precio.trim().replace(',', '.')
     if (!/^\d{1,6}(\.\d{1,2})?$/.test(pesosTexto) || Number(pesosTexto) <= 0) {
       setEstado('Escribe un precio válido con hasta dos decimales.')
@@ -187,8 +188,8 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
     <h1>Captura el precio</h1>
     <form className="stack" onSubmit={enviar}>
       <div className="fotos">
-        <Foto label="Foto del producto" file={producto} onFile={setProducto} />
-        <Foto label="Foto de la etiqueta" file={etiqueta} onFile={setEtiqueta} />
+        <Foto label="Producto" file={producto} onFile={setProducto} />
+        <Foto label="Etiqueta" file={etiqueta} onFile={setEtiqueta} />
       </div>
       <div className="input-row">
         <label>Código de barras<input value={codigo} required inputMode="numeric" pattern="[0-9]{8,14}"
@@ -308,8 +309,11 @@ export function Campo() {
     </section>}
     {resultado && <section className="panel compact" aria-live="polite">
       <h2>Última captura</h2>
-      <strong>{resultado.resultado ? decisiones[resultado.resultado.decision] : 'Validación en curso'}</strong>
-      {resultado.resultado && <p>{resultado.resultado.explicacion}</p>}
+      {resultado.resultado ? <>
+        <strong className={`decision ${resultado.resultado.decision}`}>{decisiones[resultado.resultado.decision]}</strong>
+        <TresB resultado={resultado.resultado} />
+        <p>{resultado.resultado.explicacion}</p>
+      </> : <strong>Validación en curso</strong>}
     </section>}
   </>
 }

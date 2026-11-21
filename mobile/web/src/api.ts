@@ -17,6 +17,17 @@ export type Captura = {
   precio_centavos: number; cadena?: string; sucursal?: string
 }
 export type Referencia = { precio_centavos: number; fecha: string; sucursal: string; presentacion: string }
+export type PrecioCadena = { cadena: string; mediana_centavos: number; tiendas: number; fecha: string }
+export type PrecioOtro = PrecioCadena & { marca: string; presentacion: string; por_unidad_centavos: number }
+export type Zona = { estado: string; municipio: string; tiendas?: number; cadenas?: string }
+export type RankingCadenas = {
+  productos: number; fecha: string | null
+  cadenas: { cadena: string; sobre_mas_barata_pct: number; productos: number; mas_barata: number }[]
+}
+export type Comparacion = {
+  zona: Zona; unidad: string | null; factor: number | null
+  exacto: PrecioCadena[]; presentaciones: PrecioOtro[]; alternativas: PrecioOtro[]
+}
 export type Config = { cadenas: string[]; fuentes: Record<string, number>; foundry: boolean }
 export type Borrador = {
   id: string; visita_id: string; sku: string | null; codigo: string; precio: string
