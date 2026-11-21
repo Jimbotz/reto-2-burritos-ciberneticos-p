@@ -28,7 +28,7 @@ ACCIONES = {
     "DUDOSO": "Un analista revisará la captura. Si puedes, vuelve a fotografiar la etiqueta de cerca y de frente.",
 }
 SIN_MODELO = ("Foto shelf borrosa", "Foto product borrosa", "Sin modelo", "Error interno")
-FOTO = {"shelf": "etiqueta", "product": "producto"}
+FOTO = {"shelf": "de la etiqueta", "product": "del producto"}
 
 
 def h(frente, fuente, nivel, mensaje, accion=None):
@@ -40,10 +40,10 @@ def hallazgos(cap, res, senales):
     out = []
     for kind, s in senales.get("nitidez", {}).items():
         if s < BLUR_REJECT[kind]:
-            out.append(h("evidencia", "nitidez", "falla", f"La foto del {FOTO[kind]} está borrosa (nitidez {s:.0f}; mínimo {BLUR_REJECT[kind]:.0f}).",
+            out.append(h("evidencia", "nitidez", "falla", f"La foto {FOTO[kind]} está borrosa (nitidez {s:.0f}; mínimo {BLUR_REJECT[kind]:.0f}).",
                          ACCIONES["CAPTURA_BORROSA"]))
         else:
-            out.append(h("evidencia", "nitidez", "ok", f"La foto del {FOTO[kind]} es nítida (nitidez {s:.0f})."))
+            out.append(h("evidencia", "nitidez", "ok", f"La foto {FOTO[kind]} es nítida (nitidez {s:.0f})."))
     if not senales.get("modelo"):
         out.append(h("evidencia", "regla", "aviso", "No se consultó al modelo: la captura se decidió con los filtros locales."))
         return out
