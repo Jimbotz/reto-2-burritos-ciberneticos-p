@@ -1,5 +1,5 @@
 {
- "generado": "2026-11-21T21:08:43+00:00",
+ "generado": "2026-11-21T22:08:59+00:00",
  "capturas": 100,
  "analista": {
   "revision_manual": 33,
@@ -94,11 +94,11 @@
   "v2.1+rechazo": {
    "descripcion": "v2.1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto",
    "capturas": 100,
-   "costo_operativo": 47,
+   "costo_operativo": 48,
    "precision_aprobacion": 1.0,
    "distribucion": {
-    "rechazada": 50,
-    "revision_manual": 35,
+    "rechazada": 49,
+    "revision_manual": 36,
     "aprobada": 15
    },
    "esperada_vs_predicha": {
@@ -107,29 +107,29 @@
     "aprobada->revision_manual": 14,
     "rechazada->rechazada": 30,
     "rechazada->revision_manual": 4,
-    "revision_manual->rechazada": 16,
-    "revision_manual->revision_manual": 17
+    "revision_manual->rechazada": 15,
+    "revision_manual->revision_manual": 18
    },
    "tokens_por_captura": 4038
   },
   "v2.2": {
    "descripcion": "v2.1 + el modelo califica cada foto (buena/lejana/borrosa/tapada) y se rechaza para recapturar solo si la foto es mala",
    "capturas": 100,
-   "costo_operativo": 55,
+   "costo_operativo": 59,
    "precision_aprobacion": 1.0,
    "distribucion": {
-    "revision_manual": 43,
-    "rechazada": 42,
+    "revision_manual": 50,
+    "rechazada": 35,
     "aprobada": 15
    },
    "esperada_vs_predicha": {
     "aprobada->aprobada": 15,
-    "aprobada->rechazada": 4,
-    "aprobada->revision_manual": 14,
+    "aprobada->rechazada": 3,
+    "aprobada->revision_manual": 15,
     "rechazada->rechazada": 26,
     "rechazada->revision_manual": 8,
-    "revision_manual->rechazada": 12,
-    "revision_manual->revision_manual": 21
+    "revision_manual->rechazada": 6,
+    "revision_manual->revision_manual": 27
    },
    "tokens_por_captura": 4396
   }

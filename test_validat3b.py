@@ -65,7 +65,7 @@ llamadas = []
 apply_rules(cap13, {**ok, "confidence_score": 0.5}, ocr=lambda: llamadas.append(1) or "")
 assert not llamadas  # el OCR (caro) no corre si otra regla ya la mandó a revisión
 # falta etiqueta o precio unitario (dicho por el modelo) → rechazo; la misma etiqueta puesta por nuestra regla → revisión
-assert apply_rules(cap, {**dudosa, "reason_code": "SIN_PRECIO_UNITARIO"})["decision"] == "rechazada"
+assert apply_rules(cap, {**dudosa, "reason_code": "SIN_PRECIO_UNITARIO", "precio_detectado": None})["decision"] == "rechazada"
 assert apply_rules(cap, {**dudosa, "reason_code": "SIN_ETIQUETA_PRECIO"})["decision"] == "rechazada"
 sin_precio = apply_rules(cap, {**ok, "precio_detectado": None})
 assert sin_precio["decision"] == "revision_manual" and sin_precio["reason_code"] == "SIN_ETIQUETA_PRECIO"
@@ -190,4 +190,15 @@ lejos = apply_rules(cap, {**dudosa, "calidad_fotos": {"producto": "buena", "etiq
 assert lejos["decision"] == "rechazada" and lejos["reason_code"] == "CAPTURA_LEJANA"
 assert apply_rules(cap, {**dudosa, "calidad_fotos": {"producto": "tapada", "etiqueta": "buena"}})["reason_code"] == "PRODUCTO_NO_VISIBLE"
 assert "calidad_fotos" not in apply_rules(cap, ausencia)  # no sale en el JSON oficial
+# criterio del equipo: precio regular = precio unitario si cuadra; dos pesos (drenado/neto) → revisión, no rechazo
+sin_unit = {**dudosa, "decision": "rechazada", "reason_code": "SIN_PRECIO_UNITARIO", "precio_detectado": 30.0}
+assert apply_rules(cap, sin_unit)["decision"] == "revision_manual"
+assert apply_rules(cap, {**sin_unit, "precio_detectado": 32.0})["decision"] == "rechazada"     # si no cuadra, sí se rechaza
+assert apply_rules(cap, {**sin_unit, "decision": "revision_manual"})["decision"] == "revision_manual"
+doble = {**cap, "product_name": "Chiles chipotles adobados 120g (total: 210g)"}
+no_coincide = {**dudosa, "decision": "rechazada", "reason_code": "PRODUCTO_NO_COINCIDE"}
+assert apply_rules(doble, no_coincide)["decision"] == "revision_manual"
+assert apply_rules(cap, no_coincide)["decision"] == "rechazada"                                # un solo peso: sí se rechaza
+assert "210 g de contenido neto" in contenido({"unit_product": "gramo", "unit_quantity_product": 120.0,
+                                                 "product_name": "Chiles chipotles adobados 120g (total: 210g)"})
 print("ok")

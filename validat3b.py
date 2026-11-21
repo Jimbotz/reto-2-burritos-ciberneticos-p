@@ -158,7 +158,10 @@ def contenido(cap):
     if u not in UNITS:
         return f"{q:g} {u}"
     small, big = UNITS[u]
-    return f"{q:g} {small}" + (f" (= {q / 1000:g} {big})" if q >= 1000 else "")
+    base = f"{q:g} {small}" + (f" (= {q / 1000:g} {big})" if q >= 1000 else "")
+    if m := re.search(r"\(total:\s*([\d.,]+)\s*(g|gr|ml|kg|l)\b", str(cap.get("product_name") or ""), re.I):
+        return f"{base} de masa drenada; {m.group(1)} {m.group(2).lower()} de contenido neto (cualquiera de los dos vale)"
+    return base
 
 
 def metadata(cap, version=None):
@@ -261,6 +264,19 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None, geo=No
         expected = str(cap.get("product_barcode", "")).lstrip("0")
         same = captured.isdigit() and captured == expected
     res["validaciones"]["codigo_barras"] = "ok" if same else "falla"
+
+    p0, cp0 = res["precio_detectado"], num(cap.get("capture_price"))
+    precio_cuadra = p0 is not None and cp0 is not None and abs(p0 - cp0) <= 0.01
+    # criterio del equipo: el precio regular cuenta como precio unitario (por pieza) salvo que la etiqueta diga otra
+    # cosa; si el precio cuadra, que no traiga precio por kilo o por litro no es motivo de rechazo.
+    if res["reason_code"] == "SIN_PRECIO_UNITARIO" and precio_cuadra and res["decision"] != "aprobada":
+        res.update(decision="revision_manual", reason_code="DUDOSO", explicacion=f"{res['explicacion']} "
+                   "[regla: el precio regular cuenta como precio unitario; la etiqueta solo no trae precio por kilo o litro]".strip())
+    # criterio del equipo: si el producto trae masa drenada y contenido neto, con que uno coincida no se rechaza
+    if (res["decision"] == "rechazada" and res["reason_code"] == "PRODUCTO_NO_COINCIDE"
+            and "total:" in str(cap.get("product_name") or "").lower()):
+        res.update(decision="revision_manual", reason_code="DUDOSO", explicacion=f"{res['explicacion']} "
+                   "[regla: el producto trae masa drenada y contenido neto; uno puede coincidir, lo revisa un analista]".strip())
 
     # sin etiqueta o sin precio unitario es motivo oficial de rechazo (frente C), no de revisión. Solo sobre lo que
     # dijo el modelo: nuestras reglas de abajo también usan SIN_ETIQUETA_PRECIO, pero para mandar a revisión.
