@@ -52,8 +52,15 @@ A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, de
 B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas? ¿alguna es foto de la pantalla de otro dispositivo? Las fotos deben ser CERCANAS: si la etiqueta o el producto se ven pequeños dentro de la foto (tomados de lejos, con mucho anaquel alrededor), es falla con CAPTURA_LEJANA aunque se alcance a leer el precio.
 C. Evidencia de precio: la etiqueta debe ocupar buena parte de su foto y su descripción y precio deben leerse sin esfuerzo. ¿Qué precio dice? ¿Es regular, oferta o por volumen?
 
-Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala cuesta 10 veces más que mandarla a revisión: ante cualquier duda, no apruebes.
-confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
+Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza con su reason_code. Usa revision_manual solo cuando de verdad no puedas decidir: no se distingue cuál es el producto o no se lee el precio.
+Si no hay etiqueta de precio o le falta el precio unitario, es rechazo (SIN_ETIQUETA_PRECIO o SIN_PRECIO_UNITARIO), no revisión.
+
+NO son motivo de duda; si lo demás está bien, aprueba:
+- La etiqueta de anaquel nombra el producto con abreviaturas, en otro orden o con la marca propia de la tienda, siempre que el tipo de producto, el contenido y el precio coincidan.
+- El precio es de oferta, promoción o por volumen, o la etiqueta trae fechas de vigencia: es evidencia de precio válida; dilo en explicacion.
+- Ángulos o reflejos menores, mientras el producto y la etiqueta se vean de cerca y se lean.
+
+confidence_score es tu certeza (0 a 1) en la decisión: 0.9 o más cuando la evidencia es clara; menos solo si algo concreto te hace dudar. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
 
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
@@ -198,6 +205,11 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
         expected = str(cap.get("product_barcode", "")).lstrip("0")
         same = captured.isdigit() and captured == expected
     res["validaciones"]["codigo_barras"] = "ok" if same else "falla"
+
+    # sin etiqueta o sin precio unitario es motivo oficial de rechazo (frente C), no de revisión. Solo sobre lo que
+    # dijo el modelo: nuestras reglas de abajo también usan SIN_ETIQUETA_PRECIO, pero para mandar a revisión.
+    if r.get("decision") == "revision_manual" and res["reason_code"] in ("SIN_PRECIO_UNITARIO", "SIN_ETIQUETA_PRECIO"):
+        res["decision"] = "rechazada"
 
     # código leído en la etiqueta: si es el del producto, la etiqueta es de ese producto (prueba fuerte)
     exp = str(cap.get("product_barcode")).lstrip("0")
