@@ -10,6 +10,7 @@ import html, json, re, sys, webbrowser
 from collections import Counter, defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parent
 DATA, OUT = ROOT / "data", ROOT / "out"
@@ -181,9 +182,11 @@ def page_final(caps, res):
     return intro, body
 
 
-def page():
+def page(cadena=None):
     caps = {c["capture_id"]: c for c in load(DATA / "capturas.json")}
     res = sorted(load(RESULTS), key=lambda r: r["capture_id"])
+    if cadena:  # /?cadena=Neto → solo esa cadena
+        res = [r for r in res if caps[r["capture_id"]]["capture_store_name"].lower() == cadena.lower()]
     intro, body = {"manual": page_manual, "final": page_final}.get(MODE, page_errores)(caps, res)
     return (PAGE.replace("{{BODY}}", body).replace("{{INTRO}}", intro)
             .replace("{{RESULTS}}", html.escape(RESULTS.name)).replace("{{NOTES}}", html.escape(NOTES.name)))
@@ -249,8 +252,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.local_only():
             return
-        if self.path == "/":
-            return self.reply(200, page().encode(), "text/html; charset=utf-8")
+        path, _, query = self.path.partition("?")
+        if path == "/":
+            cadena = (parse_qs(query).get("cadena") or [None])[0]
+            return self.reply(200, page(cadena).encode(), "text/html; charset=utf-8")
         if self.path == "/notas":
             return self.reply(200, json.dumps(load(NOTES, {}), ensure_ascii=False).encode(), "application/json")
         name = self.path.removeprefix("/img/")

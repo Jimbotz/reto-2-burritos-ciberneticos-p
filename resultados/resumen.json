@@ -1,0 +1,53 @@
+{
+ "generado": "2026-11-21T19:51:24+00:00",
+ "capturas": 100,
+ "analista": {
+  "revision_manual": 33,
+  "rechazada": 34,
+  "aprobada": 33
+ },
+ "versiones": {
+  "v1": {
+   "descripcion": "Prompt original + reglas (cadena, nitidez, precio, corroboración zxing/OCR, dudas corroboradas)",
+   "capturas": 100,
+   "costo_operativo": 57,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "revision_manual": 54,
+    "rechazada": 32,
+    "aprobada": 14
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 14,
+    "aprobada->rechazada": 1,
+    "aprobada->revision_manual": 18,
+    "rechazada->rechazada": 23,
+    "rechazada->revision_manual": 11,
+    "revision_manual->rechazada": 8,
+    "revision_manual->revision_manual": 25
+   },
+   "tokens_por_captura": null
+  },
+  "v2": {
+   "descripcion": "v1 + equivalencias de medidas (kg/g, L/ml, drenado/neto, promos) + usar la etiqueta del producto correcto",
+   "capturas": 100,
+   "costo_operativo": 64,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "revision_manual": 58,
+    "rechazada": 27,
+    "aprobada": 15
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 15,
+    "aprobada->rechazada": 2,
+    "aprobada->revision_manual": 16,
+    "rechazada->rechazada": 19,
+    "rechazada->revision_manual": 15,
+    "revision_manual->rechazada": 6,
+    "revision_manual->revision_manual": 27
+   },
+   "tokens_por_captura": 3990
+  }
+ }
+}

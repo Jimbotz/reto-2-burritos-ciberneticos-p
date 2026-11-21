@@ -59,6 +59,15 @@ confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "fa
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
 
+# v1 = prompt original (default, mejor costo medido). v2 = + equivalencias de medidas y etiqueta del producto correcto
+# (y contenido ya convertido en los metadatos). Elegir con VERSION=v2 en el entorno.
+VERSION = os.environ.get("VERSION", "v1")
+V2_LINES = ('Contenido: 1 kg = 1000 g y 1 L = 1000 ml (por ejemplo, 1.1 L = 1100 ml). El empaque puede mostrar contenido neto y masa drenada; cualquiera de los dos puede ser el esperado. Un extra de promoción (por ejemplo «400 g + 30 g gratis») es el mismo producto. Compara en '
+            'la misma unidad antes de marcar falla.\nLa foto de la etiqueta puede mostrar varias etiquetas y productos vecinos: usa la etiqueta cuya descripción corresponde al producto esperado e ignora las demás. Solo si ninguna lo describe, marca falla en evidencia de precio.\n')
+C_LINE = "¿qué precio dice? ¿es regular, oferta o por volumen?\n"
+if VERSION == "v2":
+    PROMPT = PROMPT.replace(C_LINE, C_LINE + V2_LINES, 1)
+
 
 def nullable(schema):
     return {"anyOf": [schema, {"type": "null"}]}
@@ -82,7 +91,8 @@ SCHEMA = {
 }
 
 META_KEYS = ("capture_store_name", "capture_date", "capture_price", "capture_brand", "product_name",
-             "unit_product", "unit_quantity_product", "product_group", "product_line")
+             "product_group", "product_line")
+UNITS = {"gramo": ("g", "kg"), "mililitro": ("ml", "L")}
 
 MOBILE_PROMPT = PROMPT.replace(
     "Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
@@ -106,6 +116,26 @@ def load_env(path=Path(__file__).with_name(".env")):
             k, sep, v = line.partition("=")
             if sep and not k.strip().startswith("#"):
                 os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
+
+
+def contenido(cap):
+    """Contenido esperado legible y con su equivalencia (p. ej. "1100 ml (= 1.1 L)"): el modelo confundía L con ml y kg con g."""
+    q, u = num(cap.get("unit_quantity_product")), cap.get("unit_product")
+    if q is None:
+        return None
+    if u not in UNITS:
+        return f"{q:g} {u}"
+    small, big = UNITS[u]
+    return f"{q:g} {small}" + (f" (= {q / 1000:g} {big})" if q >= 1000 else "")
+
+
+def metadata(cap, version=None):
+    meta = {k: cap.get(k) for k in META_KEYS}
+    if (version or VERSION) != "v2":  # v1: unidad y cantidad crudas, como en la corrida original
+        return {**meta, "unit_product": cap.get("unit_product"), "unit_quantity_product": cap.get("unit_quantity_product")}
+    if (c := contenido(cap)) is not None:
+        meta["contenido_esperado"] = c
+    return meta
 
 
 def num(x):
@@ -158,7 +188,7 @@ def ask_model(client, cap, base, *, mobile=False):
         content += [{"type": "text", "text": f"Foto {kind}:"},
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                  "data": img_b64(base / cap[f"{kind}_file"], side)}}]
-    content.append({"type": "text", "text": "Metadatos:\n" + json.dumps({k: cap.get(k) for k in META_KEYS}, ensure_ascii=False)})
+    content.append({"type": "text", "text": "Metadatos:\n" + json.dumps(metadata(cap), ensure_ascii=False)})
     r = client.messages.create(
         model=os.environ["MODEL"],
         max_tokens=16000,

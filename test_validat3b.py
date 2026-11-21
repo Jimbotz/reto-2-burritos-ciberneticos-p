@@ -72,4 +72,14 @@ assert apply_rules(cap13, duda13, ocr=leer)["decision"] == "aprobada" and len(le
 assert apply_rules(cap13, duda13, ocr=lambda: "ARROZ $30.00")["decision"] == "revision_manual"
 assert apply_rules({**cap13, "capture_store_name": "Walmart"}, duda13, ocr=leer)["decision"] == "revision_manual"
 assert len(lecturas) == 1  # en cadena sin verificación ni se intenta el OCR
+# contenido esperado legible y con equivalencia (el modelo se confundía con L/ml y kg/g)
+from validat3b import contenido, metadata
+assert contenido({"unit_product": "mililitro", "unit_quantity_product": 1100.0}) == "1100 ml (= 1.1 L)"
+assert contenido({"unit_product": "gramo", "unit_quantity_product": 1000.0}) == "1000 g (= 1 kg)"
+assert contenido({"unit_product": "gramo", "unit_quantity_product": 485.0}) == "485 g"
+assert contenido({"unit_product": "pieza", "unit_quantity_product": 4.0}) == "4 pieza"
+assert contenido({}) is None
+m = metadata({"capture_price": 30.0, "unit_product": "gramo", "unit_quantity_product": 1000.0}, "v2")
+assert metadata({"unit_product": "gramo", "unit_quantity_product": 5.0}, "v1")["unit_quantity_product"] == 5.0
+assert m["contenido_esperado"] == "1000 g (= 1 kg)" and "unit_product" not in m
 print("ok")
