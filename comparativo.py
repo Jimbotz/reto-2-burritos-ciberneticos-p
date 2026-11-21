@@ -21,6 +21,7 @@ VERSIONES = {
     "v2.1": ("out/v2_1.json", "v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA"),
     "v1+rechazo": ("out/v1_rechazo.json", "v1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto"),
     "v2.1+rechazo": ("out/v2_1_rechazo.json", "v2.1 + rechazar (para volver a capturar) cuando el modelo duda por mala calidad de foto"),
+    "v2.2": ("out/v2_2.json", "v2.1 + el modelo califica cada foto (buena/lejana/borrosa/tapada) y se rechaza para recapturar solo si la foto es mala"),
 }
 KEYS = ("decision", "confidence_score", "reason_code", "validaciones", "precio_detectado", "explicacion")
 MARCA = {"aprobar": "aprobada", "rechazar": "rechazada", "revision": "revision_manual"}

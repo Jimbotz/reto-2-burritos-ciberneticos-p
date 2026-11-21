@@ -105,4 +105,12 @@ assert r_foto["decision"] == "rechazada" and r_foto["reason_code"] == "CAPTURA_L
 assert apply_rules(cap, {**dudosa, "explicacion": "La foto del producto está borrosa."})["reason_code"] == "CAPTURA_BORROSA"
 assert apply_rules(cap, {**dudosa, "explicacion": "No se puede confirmar si la oferta sigue vigente."})["decision"] == "revision_manual"
 assert apply_rules({**cap, "capture_store_name": "Walmart"}, ok)["decision"] == "revision_manual"  # el texto de la regla de cadena no cuenta
+# v2.2: con calidad_fotos decide el campo, no el texto
+ausencia = {**dudosa, "explicacion": "Es precio regular, no se ve leyenda de oferta ni de volumen.",
+            "calidad_fotos": {"producto": "buena", "etiqueta": "buena"}}
+assert apply_rules(cap, ausencia)["decision"] == "revision_manual"  # "no se ve leyenda" ya no rechaza
+lejos = apply_rules(cap, {**dudosa, "calidad_fotos": {"producto": "buena", "etiqueta": "lejana"}})
+assert lejos["decision"] == "rechazada" and lejos["reason_code"] == "CAPTURA_LEJANA"
+assert apply_rules(cap, {**dudosa, "calidad_fotos": {"producto": "tapada", "etiqueta": "buena"}})["reason_code"] == "PRODUCTO_NO_VISIBLE"
+assert "calidad_fotos" not in apply_rules(cap, ausencia)  # no sale en el JSON oficial
 print("ok")

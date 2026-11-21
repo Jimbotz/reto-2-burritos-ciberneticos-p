@@ -44,6 +44,11 @@ def hallazgos(cap, res, senales):
                          ACCIONES["CAPTURA_BORROSA"]))
         else:
             out.append(h("evidencia", "nitidez", "ok", f"La foto {FOTO[kind]} es nítida (nitidez {s:.0f})."))
+    for k, q in (senales.get("calidad_fotos") or {}).items():
+        foto = "de la etiqueta" if k == "etiqueta" else "del producto"
+        if q != "buena":
+            out.append(h("evidencia", "modelo", "falla", f"La foto {foto} se ve {q} (según el modelo).",
+                         ACCIONES["CAPTURA_BORROSA" if q == "borrosa" else "CAPTURA_LEJANA"]))
     if not senales.get("modelo"):
         out.append(h("evidencia", "regla", "aviso", "No se consultó al modelo: la captura se decidió con los filtros locales."))
         return out
