@@ -297,26 +297,35 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
     return res
 
 
-def decide(cap, base, client, *, store_verified=None):
+def decide(cap, base, client, *, store_verified=None, senales=None):
+    """senales (opcional): dict que se llena con lo medido localmente, para la salida web descriptiva (salida_web.py)."""
+    senales = {} if senales is None else senales
+    senales["nitidez"] = {}
     for kind in ("shelf", "product"):
         s = blur_score(base / cap[f"{kind}_file"])
+        senales["nitidez"][kind] = round(s, 1)
         if s < BLUR_REJECT[kind]:
             return apply_rules(cap, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
                                      "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"},
                                store_verified=store_verified), 0
     label = barcodes(base / cap["shelf_file"])
+    senales["codigos_etiqueta"] = sorted(label)
     if client is None:
         return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label,
                            store_verified=store_verified), 0
     r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
     # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
-    ocr = None if store_verified is not None else (lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
-    return apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr), tokens
+    senales["modelo"] = True
+    ocr = None if store_verified is not None else cache(lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
+    res = apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr)
+    if ocr is not None and ocr.cache_info().currsize:  # solo si la regla llegó a necesitar el OCR
+        senales["ocr"] = ocr()
+    return res, tokens
 
 
-def safe_decide(cap, base, client):
+def safe_decide(cap, base, client, senales=None):
     try:
-        return decide(cap, base, client)
+        return decide(cap, base, client, senales=senales)
     except Exception as e:  # nunca perder una captura: el gate pide JSON válido en ≥99%
         print(f"{cap.get('capture_id')}: {e!r}", file=sys.stderr)
         return apply_rules(cap, {"explicacion": f"Error interno: {type(e).__name__}"}), 0
@@ -358,10 +367,14 @@ def main(inp, outp, limit=None):
     todo = caps[:int(limit)] if limit else caps
     base, client = Path(inp).parent, make_client()
     with ThreadPoolExecutor(int(os.environ.get("WORKERS", 4))) as ex:
-        rows = list(ex.map(lambda c: safe_decide(c, base, client), todo))
+        sen = {c["capture_id"]: {} for c in todo}
+        rows = list(ex.map(lambda c: safe_decide(c, base, client, sen[c["capture_id"]]), todo))
     results, tokens = [r for r, _ in rows], sum(t for _, t in rows)
     Path(outp).parent.mkdir(parents=True, exist_ok=True)
-    Path(outp).write_text(json.dumps(results, ensure_ascii=False, indent=1))
+    Path(outp).write_text(json.dumps(results, ensure_ascii=False, indent=1))  # salida oficial del hackathon
+    import salida_web  # salida para la página: campos de capturas.json + resultado + hallazgos (local, trae datos de 3B)
+    web = [salida_web.registro(c, r, sen[c["capture_id"]]) for c, r in zip(todo, results)]
+    Path(outp).with_suffix(".web.json").write_text(json.dumps(web, ensure_ascii=False, indent=1))
     print(f"{len(results)} capturas · {tokens} tokens ({tokens / len(results):.0f}/captura) · modelo: {'sí' if client else 'no'} → {outp}")
     n, s = ocr_local.stats["n"], ocr_local.stats["seconds"]
     print(f"OCR local: {n} etiquetas" + (f" · {s / n:.1f}s/etiqueta" if n else "") + ("" if ocr_local.available() else " (no disponible: sin mlx-vlm)"))

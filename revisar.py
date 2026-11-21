@@ -4,6 +4,7 @@ Uso:
     python revisar.py           → errores del modelo (aprobó lo que no debía)       · notas en out/notas.json
     python revisar.py manual    → las que el motor manda a revisión manual, por motivo · notas en out/notas_manual.json
     python revisar.py final     → las 100 del motor final (out/sim_final.json) por decisión · notas en out/notas_final.json
+    python revisar.py final out/v2_1.json → otra corrida (p. ej. v2.1)                     · notas en out/notas_v2_1.json
 Abre http://127.0.0.1:8765. Todo corre en tu máquina: las imágenes de 3B no salen de aquí.
 """
 import html, json, re, sys, webbrowser
@@ -17,6 +18,9 @@ DATA, OUT = ROOT / "data", ROOT / "out"
 MODE = next((m for m in ("manual", "final") if m in sys.argv[1:]), "errores")
 NOTES = OUT / {"manual": "notas_manual.json", "final": "notas_final.json"}.get(MODE, "notas.json")
 RESULTS = OUT / {"manual": "sim_ocr.json", "final": "sim_final.json"}.get(MODE, "local.json")
+_otro = next((Path(x) for x in sys.argv[1:] if x.endswith(".json")), None)
+if _otro:  # python revisar.py final out/v2_1.json → esos resultados, con su propio archivo de notas
+    RESULTS, NOTES = _otro.resolve(), OUT / f"notas_{_otro.stem}.json"
 PORT = 8765
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 IMG_RE = re.compile(r"CAP-\d+_(facade|product|shelf)\.jpg")
@@ -146,7 +150,7 @@ def page_final(caps, res):
     tr = "".join(f"<tr><td><b>{d}</b></td><td>{sum(t[(d, a)] for a in SAME)}</td>" + "".join(f"<td>{t[(d, a)]}</td>" for a in SAME) + "</tr>"
                  for d in SAME)
     intro = (f'<div class="sum"><b>Motor final · costo {total}</b> (todo a revisión = {len(res)}). '
-             f'Simulado con las respuestas reales del prompt original + reglas + OCR local (sin tokens).'
+             f'Resultados de {html.escape(RESULTS.name)}: reglas + OCR local sobre las respuestas del modelo.'
              f'<table class="mx"><tr>{th}</tr>{tr}</table></div>'
              '<p class="hint">En cada grupo van primero las que no coinciden con el analista. Marca qué debió hacer el motor.</p>')
 

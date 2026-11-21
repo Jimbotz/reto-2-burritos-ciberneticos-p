@@ -6,3 +6,4 @@ __pycache__/
 /AGENTS.md
 mobile/web/node_modules/
 mobile/web/dist/
+.DS_Store

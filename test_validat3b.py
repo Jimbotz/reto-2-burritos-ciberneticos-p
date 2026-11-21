@@ -82,4 +82,20 @@ assert contenido({}) is None
 m = metadata({"capture_price": 30.0, "unit_product": "gramo", "unit_quantity_product": 1000.0}, "v2")
 assert metadata({"unit_product": "gramo", "unit_quantity_product": 5.0}, "v1")["unit_quantity_product"] == 5.0
 assert m["contenido_esperado"] == "1000 g (= 1 kg)" and "unit_product" not in m
+# salida web: campos de capturas.json + resultado oficial + hallazgos y acción sugerida
+import salida_web
+cw = {**cap13, "capture_store_name": "Soriana", "product_name": "Arroz", "min_product_price": 20.0, "max_product_price": 40.0}
+borrosa = apply_rules(cw, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
+                           "explicacion": "Foto shelf borrosa (nitidez 12 < 35)"})
+w = salida_web.registro(cw, borrosa, {"nitidez": {"shelf": 12.0}})
+assert w["product_name"] == "Arroz" and w["decision"] == "rechazada" and w["accion_sugerida"] == salida_web.ACCIONES["CAPTURA_BORROSA"]
+assert any(x["fuente"] == "nitidez" and x["nivel"] == "falla" for x in w["hallazgos"])
+otro = apply_rules(cw, {**ok, "precio_detectado": 31})
+w = salida_web.registro(cw, otro, {"nitidez": {"shelf": 90, "product": 90}, "codigos_etiqueta": [], "modelo": True})
+assert any("$31.00" in x["mensaje"] and x["nivel"] == "falla" for x in w["hallazgos"])
+assert w["accion_sugerida"] == salida_web.ACCIONES["PRECIO_NO_COINCIDE"]
+cadena = salida_web.registro({**cw, "capture_store_name": "Walmart"}, apply_rules({**cw, "capture_store_name": "Walmart"}, ok),
+                             {"nitidez": {}, "codigos_etiqueta": ["401013049343"], "modelo": True})
+assert any("código interno" in x["mensaje"] for x in cadena["hallazgos"]) and "analista" in cadena["accion_sugerida"]
+assert salida_web.registro(cw, apply_rules(cw, ok, {"7501234567890"}), {"modelo": True})["accion_sugerida"] is None
 print("ok")
