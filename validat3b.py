@@ -3,7 +3,7 @@
 Uso:
     python validat3b.py ping                                   # prueba la conexión al endpoint
     python validat3b.py data/capturas.json out/resultados.json [N]   # N = solo las primeras N capturas
-Lee .env (Endpoint, API_KEY, MODEL). Sin API_KEY corre solo los filtros locales (sin IA).
+Lee .env (Endpoint, API_KEY, MODEL) y LLAMA AL MODELO. Agrega --local para correr solo los filtros locales (cero tokens).
 Si las capturas traen `decision_esperada`, imprime costo operativo y precisión.
 """
 import base64, json, os, sys
@@ -47,7 +47,7 @@ B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fo
 C. Evidencia de precio: ¿hay etiqueta de precio visible y legible? ¿qué precio dice? ¿es regular, oferta o por volumen?
 
 Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala es el peor error posible.
-confidence_score es tu certeza (0 a 1) en la decisión. explicacion: 1-2 frases en español.
+confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
 
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
@@ -63,15 +63,14 @@ SCHEMA = {
         "decision": {"type": "string", "enum": list(DECISIONS)},
         "confidence_score": {"type": "number"},
         "reason_code": {"type": "string", "enum": list(REASON_CODES)},
-        "validaciones": {"type": "object", "properties": {k: {"type": "boolean"} for k in MODEL_CHECKS},
+        "validaciones": {"type": "object", "properties": {k: {"type": "string", "enum": ["ok", "falla"]} for k in MODEL_CHECKS},
                          "required": list(MODEL_CHECKS), "additionalProperties": False},
         "precio_detectado": nullable({"type": "number"}),
-        "tipo_precio": nullable({"type": "string", "enum": ["regular", "oferta", "por_volumen"]}),
         "codigo_barras_detectado": nullable({"type": "string"}),
         "explicacion": {"type": "string"},
     },
     "required": ["decision", "confidence_score", "reason_code", "validaciones", "precio_detectado",
-                 "tipo_precio", "codigo_barras_detectado", "explicacion"],
+                 "codigo_barras_detectado", "explicacion"],
     "additionalProperties": False,
 }
 
@@ -143,21 +142,21 @@ def ask_model(client, cap, base):
 
 
 def apply_rules(cap, r):
-    """Normaliza la respuesta del modelo al formato oficial y aplica reglas duras encima."""
+    """Normaliza la respuesta del modelo al formato oficial (ver #foundry en la página del reto) y aplica reglas duras."""
     v = r.get("validaciones") or {}
     res = {
         "capture_id": cap["capture_id"],
         "decision": r.get("decision") if r.get("decision") in DECISIONS else "revision_manual",
         "confidence_score": max(0.0, min(1.0, num(r.get("confidence_score")) or 0.0)),
         "reason_code": r.get("reason_code") if r.get("reason_code") in REASON_CODES else "DUDOSO",
-        "validaciones": {k: v.get(k) is True for k in CHECKS},
+        "validaciones": {k: "ok" if v.get(k) == "ok" else "falla" for k in CHECKS},
         "precio_detectado": num(r.get("precio_detectado")),
-        "tipo_precio": r.get("tipo_precio"),
         "codigo_barras_detectado": r.get("codigo_barras_detectado"),
         "explicacion": str(r.get("explicacion") or ""),
     }
     # el código de barras lo escanea la app: se verifica contra el esperado, no con la foto
-    res["validaciones"]["codigo_barras"] = str(cap.get("capture_barcode")) == str(cap.get("product_barcode"))
+    same = str(cap.get("capture_barcode")) == str(cap.get("product_barcode"))
+    res["validaciones"]["codigo_barras"] = "ok" if same else "falla"
 
     if res["decision"] == "aprobada":
         p, cp = res["precio_detectado"], num(cap.get("capture_price"))
@@ -165,7 +164,7 @@ def apply_rules(cap, r):
         why = None
         if res["confidence_score"] < APPROVE_MIN:
             why = ("DUDOSO", "confianza baja")
-        elif not all(res["validaciones"].values()):
+        elif any(x != "ok" for x in res["validaciones"].values()):
             why = ("DUDOSO", "alguna validación no pasó")
         elif p is None:
             why = ("SIN_ETIQUETA_PRECIO", "no se leyó precio en la etiqueta")
@@ -245,6 +244,9 @@ def main(inp, outp, limit=None):
 
 if __name__ == "__main__":
     load_env()
+    if "--local" in sys.argv:  # solo filtros locales, cero tokens
+        sys.argv.remove("--local")
+        os.environ.pop("API_KEY", None)
     if sys.argv[1:2] == ["ping"]:
         ping()
     else:

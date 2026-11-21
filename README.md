@@ -17,7 +17,8 @@ Datos (no se suben al repo): descomprimir ambos zips del reto en `data/` para qu
 
 ```bash
 .venv/bin/python validat3b.py ping                                       # prueba el endpoint
-.venv/bin/python validat3b.py data/capturas.json out/resultados.json 10  # primeras 10 capturas
+.venv/bin/python validat3b.py data/capturas.json out/local.json --local  # solo filtros locales, cero tokens
+.venv/bin/python validat3b.py data/capturas.json out/resultados.json 10  # primeras 10 capturas (gasta tokens)
 .venv/bin/python validat3b.py data/capturas.json out/resultados.json     # todas
 .venv/bin/python test_validat3b.py                                       # pruebas de reglas
 ```

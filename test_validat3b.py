@@ -3,9 +3,15 @@ from validat3b import apply_rules, cost
 cap = {"capture_id": "X", "capture_price": 30.0, "min_product_price": 20.0, "max_product_price": 40.0,
        "capture_barcode": 750, "product_barcode": 750}
 ok = {"decision": "aprobada", "confidence_score": 0.95, "reason_code": "OK", "precio_detectado": "30.00",
-      "validaciones": {"tienda_fachada": True, "producto": True, "evidencia_precio": True}}
+      "validaciones": {"tienda_fachada": "ok", "producto": "ok", "evidencia_precio": "ok"}}
 
-assert apply_rules(cap, ok)["decision"] == "aprobada"
+# formato oficial: exactamente estas llaves, validaciones en "ok"/"falla"
+out = apply_rules(cap, ok)
+assert set(out) == {"capture_id", "decision", "confidence_score", "reason_code", "validaciones",
+                    "precio_detectado", "codigo_barras_detectado", "explicacion"}
+assert out["validaciones"] == {"tienda_fachada": "ok", "producto": "ok", "codigo_barras": "ok", "evidencia_precio": "ok"}
+assert out["decision"] == "aprobada"
+assert apply_rules(cap, {**ok, "validaciones": {**ok["validaciones"], "producto": "falla"}})["decision"] == "revision_manual"
 assert apply_rules(cap, {**ok, "precio_detectado": 32})["reason_code"] == "PRECIO_NO_COINCIDE"
 assert apply_rules(cap, {**ok, "precio_detectado": None})["decision"] == "revision_manual"
 assert apply_rules(cap, {**ok, "confidence_score": 0.6})["decision"] == "revision_manual"
