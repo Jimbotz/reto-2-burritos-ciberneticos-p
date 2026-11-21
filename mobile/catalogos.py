@@ -26,12 +26,18 @@ ALIAS = {
     "Chedraui": r"\bchedraui\b",
     "Soriana": r"\bsoriana\b",
     "Bara": r"\b(?:tiendas? bara|bara sucursal|bara super|bara precios)\b|^bara$",
-    "Neto": r"\b(?:tiendas? neto|super neto|neto sucursal|neto super precio)\b|^neto$",
+    "Neto": r"\b(?:tiendas? neto|super neto|neto sucursal|neto super precio|tiendas? super ?precios?)\b|^(?:\d+ )?neto\b",
     "Tiendas 3B": r"\b(?:tiendas? (?:3b|tres b)|super (?:3b|tres b))\b",
     "La Comer": r"\b(?:la comer|fresko|city market|sumesa)\b",
     "H-E-B": r"\bh[ .-]?e[ .-]?b\b",
 }
 ALIAS = {cadena: re.compile(patron) for cadena, patron in ALIAS.items()}
+# Walmex registra Bodega Aurrera, Walmart, Sam's y Superama con la misma razón social: el formato sale del nombre.
+WALMEX = re.compile(r"\bwal ?mart\b")
+WALMEX_FORMATOS = {
+    "Bodega Aurrera": re.compile(r"^(?:\d+ )?(?:mi )?(?:bodega|aurrera|aorrera|ba|bae|mb|bd|boa|b)\b"),
+    "Walmart": re.compile(r"^(?:\d+ )?(?:supercenter|sc|wal ?mart)\b"),
+}
 
 
 def normalizar(texto):
@@ -40,9 +46,17 @@ def normalizar(texto):
     return " ".join(re.findall(r"[a-z0-9]+", ascii_text))
 
 
+OTRA = "Otra"  # cadena de las tiendas DENUE que no son de ninguna cadena soportada
+NO_TIENDA = re.compile(r"\b(?:cedis|estacionamiento|oficinas?)\b")  # no son tiendas: nadie fotografía su fachada
+
+
 def cadena_de(nombre, *otros):
+    if NO_TIENDA.search(normalizar(nombre)):
+        return None
     if re.search(r"\bsuper bara 52[a-z0-9]+\b", normalizar(nombre)):
         return "Bara"
+    if otros and WALMEX.search(normalizar(otros[0])):
+        return next((c for c, p in WALMEX_FORMATOS.items() if p.search(normalizar(nombre))), None)
     for texto in (nombre, *otros):
         texto = normalizar(texto)
         for cadena, patron in ALIAS.items():
@@ -121,34 +135,45 @@ def guardar_sucursal(db, ficha):
     )
 
 
+def fichas_denue(reader, edicion):
+    """Tiendas de un CSV DENUE, para la app (SQLite) y para geolocalizar.py: un solo criterio en los dos lados.
+    Las cadenas no soportadas de súper y minisúper (OXXO, 7-Eleven…) salen como OTRA: no se muestran para elegir, pero
+    sirven para notar que la foto se tomó frente a otra tienda. Las misceláneas (461110) sin cadena se omiten: hay
+    una en cada cuadra y volverían ambigua cualquier ubicación."""
+    columnas = {normalizar(k).replace(" ", "_"): k for k in reader.fieldnames or []}
+    if not {"id", "nom_estab", "latitud", "longitud"} <= columnas.keys():
+        raise ValueError("Se esperaban las columnas DENUE id, nom_estab, latitud y longitud.")
+    for row in reader:
+        def valor(k):
+            return (row.get(columnas.get(k)) or "").strip()
+
+        actividad = valor("codigo_act")
+        if actividad and actividad not in ACTIVIDADES_TIENDA:
+            continue
+        nombre, razon, id_denue = valor("nom_estab"), valor("raz_social"), valor("id")
+        if not id_denue or NO_TIENDA.search(normalizar(nombre)):
+            continue
+        cadena = cadena_de(nombre, razon) or (OTRA if actividad in ("462111", "462112") else None)
+        if not cadena:
+            continue
+        try:
+            lat, lon = coords(valor("latitud"), valor("longitud"))
+        except (ValueError, TypeError):
+            continue
+        direccion = ", ".join(filter(None, [
+            " ".join(filter(None, (valor("tipo_vial"), valor("nom_vial"), valor("numero_ext")))),
+            valor("nomb_asent"), valor("cod_postal"),
+        ]))
+        yield dict(id=f"denue:{id_denue}", clee=valor("clee"), cadena=cadena, nombre=nombre or razon,
+                   direccion=direccion, municipio=valor("municipio"), estado=valor("entidad"), lat=lat, lon=lon,
+                   fuente="INEGI DENUE", edicion=edicion)
+
+
 def cargar_denue(db, path, encoding, archivo, edicion):
     total = 0
     with filas(path, encoding, archivo=archivo) as reader:
-        columnas = {normalizar(k).replace(" ", "_"): k for k in reader.fieldnames or []}
-        if not {"id", "nom_estab", "latitud", "longitud"} <= columnas.keys():
-            raise ValueError("Se esperaban las columnas DENUE id, nom_estab, latitud y longitud.")
-        for row in reader:
-            def valor(k):
-                return (row.get(columnas.get(k)) or "").strip()
-
-            actividad = valor("codigo_act")
-            if actividad and actividad not in ACTIVIDADES_TIENDA:
-                continue
-            nombre, razon, id_denue = valor("nom_estab"), valor("raz_social"), valor("id")
-            cadena = cadena_de(nombre, razon)
-            if not cadena or not id_denue:
-                continue
-            try:
-                lat, lon = coords(valor("latitud"), valor("longitud"))
-            except (ValueError, TypeError):
-                continue
-            direccion = ", ".join(filter(None, [
-                " ".join(filter(None, (valor("tipo_vial"), valor("nom_vial"), valor("numero_ext")))),
-                valor("nomb_asent"), valor("cod_postal"),
-            ]))
-            guardar_sucursal(db, dict(id=f"denue:{id_denue}", clee=valor("clee"), cadena=cadena,
-                                      nombre=nombre or razon, direccion=direccion, municipio=valor("municipio"),
-                                      estado=valor("entidad"), lat=lat, lon=lon, fuente="INEGI DENUE", edicion=edicion))
+        for ficha in fichas_denue(reader, edicion):
+            guardar_sucursal(db, ficha)
             total += 1
     return total
 

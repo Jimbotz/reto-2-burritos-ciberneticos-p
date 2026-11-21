@@ -12,6 +12,7 @@ cp .env.example .env    # llenar Endpoint, API_KEY, MODEL (la key es personal)
 ```
 
 Datos (no se suben al repo): descomprimir ambos zips del reto en `data/` para que quede `data/capturas.json` junto a `data/imagenes/`.
+`geolocalizar.py` contrasta el GPS EXIF de cada fachada (y su precisión) con las tiendas DENUE de `datasets/`; si el GPS queda ambiguo, desempata con el OCR de la fachada. La app móvil usa la misma regla. Las fotos de desarrollo no traen EXIF (ahí devuelve `sin_gps`); `test/` trae fotos de campo con GPS.
 
 ## Uso
 

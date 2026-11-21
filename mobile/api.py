@@ -24,9 +24,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+import geolocalizar
 from validat3b import barcodes, load_env, make_client
 
-from .catalogos import CADENAS, cargar_productos, centavos, codigo_busqueda, normalizar
+from .catalogos import CADENAS, OTRA, cargar_productos, centavos, codigo_busqueda, normalizar
 from .db import ROOT, all_dicts, conectar, inicializar
 from .evidencia import distancia_m, normalizar_foto
 from .worker import consumir
@@ -34,7 +35,7 @@ from .worker import consumir
 
 COOKIE = "validat3b_sesion"
 SESION_SEGUNDOS = 7 * 24 * 3600
-RADIO_METROS = 300
+RADIO_METROS = 300  # sucursales que se listan para elegir; verificar usa la regla de geolocalizar.py
 UNIDADES = {"gramo": ("kg", 1000), "mililitro": ("L", 1000), "pieza": ("pieza", 1)}
 RANGO_TAMANO = (0.4, 2.5)  # otras presentaciones: entre 0.4 y 2.5 veces el contenido del producto
 MAX_FILAS_NIVEL = 6
@@ -85,8 +86,8 @@ def candidatas(db, p):
     resultados = all_dicts(db.execute(
         """SELECT s.id, s.cadena, s.nombre, s.direccion, s.municipio, s.estado, s.fuente, s.lat, s.lon
            FROM sucursales_geo g JOIN sucursales s ON s.rowid=g.rowid
-           WHERE g.lat_min <= ? AND g.lat_max >= ? AND g.lon_min <= ? AND g.lon_max >= ?""",
-        limites_geograficos(p.lat, p.lon, RADIO_METROS),
+           WHERE g.lat_min <= ? AND g.lat_max >= ? AND g.lon_min <= ? AND g.lon_max >= ? AND s.cadena != ?""",
+        (*limites_geograficos(p.lat, p.lon, RADIO_METROS), OTRA),
     ))
     cercanas = []
     for item in resultados:
@@ -100,15 +101,39 @@ def candidatas(db, p):
     return (denue or cercanas)[:3]
 
 
-def sugerida(cercanas, p, ahora):
-    if not cercanas or p.precision_m > 50 or not -60 <= ahora - p.medida_en <= 120:
+def tiendas_denue(db, lat, lon, radio):
+    """Tiendas DENUE alrededor del punto, incluidas las de OTRA cadena, para geolocalizar.contrastar."""
+    return all_dicts(db.execute(
+        """SELECT s.id, s.cadena, s.nombre, s.direccion, s.lat, s.lon
+           FROM sucursales_geo g JOIN sucursales s ON s.rowid=g.rowid
+           WHERE g.lat_min <= ? AND g.lat_max >= ? AND g.lon_min <= ? AND g.lon_max >= ? AND s.fuente = 'INEGI DENUE'""",
+        limites_geograficos(lat, lon, radio),
+    ))
+
+
+def sugerida(db, p, ahora):
+    """Sucursal que la ubicación del teléfono deja verificada: la más cercana, si es de una cadena soportada, está a
+    100 m o menos y geolocalizar.contrastar no la ve ambigua (misma regla que el motor para la fachada)."""
+    if not -60 <= ahora - p.medida_en <= 120:
         return None
-    primera = cercanas[0]
-    if primera["fuente"] != "INEGI DENUE" or primera["distancia_m"] > 100:
+    tiendas = tiendas_denue(db, p.lat, p.lon, geolocalizar.RADIO_M)
+    if not tiendas:
         return None
-    if len(cercanas) > 1 and cercanas[1]["distancia_m"] - primera["distancia_m"] <= 2 * p.precision_m + 25:
+    cercana = min(tiendas, key=lambda t: distancia_m(p.lat, p.lon, t["lat"], t["lon"]))
+    if cercana["cadena"] == OTRA:
         return None
-    return primera["id"]
+    geo = geolocalizar.contrastar((p.lat, p.lon), cercana["cadena"], tiendas, p.precision_m)
+    if geo["estado"] != "coincide" or geo["ambigua"] or geo["tienda"]["distancia_m"] > 100:
+        return None
+    return geo["tienda"]["id"]
+
+
+def foto_en_sucursal(db, foto, visita):
+    """La foto (GPS y precisión del EXIF) se tomó en la sucursal de la visita y no frente a otra tienda."""
+    (lat, lon), precision = foto
+    # 250 m: una foto dentro de una tienda grande puede quedar lejos del punto DENUE
+    geo = geolocalizar.contrastar((lat, lon), visita["cadena"], tiendas_denue(db, lat, lon, 250), precision, radio=250)
+    return geo["estado"] == "coincide" and not geo["ambigua"] and geo["tienda"]["id"] == visita["sucursal_id"]
 
 
 def captura_publica(item):
@@ -380,7 +405,7 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
     def cercanas(posicion: Posicion, _=Depends(operador)):
         with conectar(path) as db:
             opciones = candidatas(db, posicion)
-        return {"candidatas": opciones, "sugerida_id": sugerida(opciones, posicion, time())}
+            return {"candidatas": opciones, "sugerida_id": sugerida(db, posicion, time())}
 
     @app.get("/api/sucursales")
     def buscar_sucursales(q: str = Query(min_length=2, max_length=120), _=Depends(rol)):
@@ -391,8 +416,8 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         with conectar(path) as db:
             return all_dicts(db.execute(
                 f"""SELECT id, cadena, nombre, direccion, municipio, estado, fuente FROM sucursales
-                    WHERE {where} ORDER BY fuente, estado, municipio, nombre LIMIT 25""",
-                tuple(f"%{word}%" for word in palabras),
+                    WHERE {where} AND cadena != ? ORDER BY fuente, estado, municipio, nombre LIMIT 25""",
+                (*(f"%{word}%" for word in palabras), OTRA),
             ))
 
     @app.post("/api/visitas", status_code=201)
@@ -402,10 +427,10 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         with conectar(path) as db:
             if body.sucursal_id:
                 item = db.execute("SELECT * FROM sucursales WHERE id=?", (body.sucursal_id,)).fetchone()
-                if not item:
+                if not item or item["cadena"] == OTRA:
                     raise HTTPException(404, "No encontramos esa sucursal.")
                 cadena, nombre = item["cadena"], item["nombre"]
-                if p and sugerida(candidatas(db, p), p, ahora) == item["id"]:
+                if p and sugerida(db, p, ahora) == item["id"]:
                     ubicacion = "verificada"
             else:
                 cadena, nombre = body.cadena, (body.nombre or "").strip()
@@ -533,9 +558,9 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         huella = sha256(json.dumps([str(body.visita_id), body.sku, body.codigo, precio, hash_producto, hash_etiqueta])
                         .encode()).hexdigest()
         verificada = v["ubicacion"] == "verificada" and body.capturada_en - v["creada"] <= 4 * 3600
-        for gps in (gps_producto, gps_etiqueta):
-            if verificada and gps and distancia_m(*gps, v["tienda_lat"], v["tienda_lon"]) > 250:
-                verificada = False
+        if verificada and (fotos := [f for f in (gps_producto, gps_etiqueta) if f]):
+            with conectar(path) as db:
+                verificada = all(foto_en_sucursal(db, f, v) for f in fotos)
         cap = json.loads(p["datos"]) if p else {}
         cap.update(capture_id=id_captura, capture_store_name=v["cadena"],
                    capture_date=datetime.fromtimestamp(body.capturada_en, timezone.utc).isoformat(),
