@@ -5,10 +5,8 @@ PWA móvil para confirmar la sucursal mediante ubicación o búsqueda, registrar
 ## Abrir desde el teléfono
 
 1. Conecta el servidor y el teléfono a la misma red privada.
-2. Abre el archivo `out/mobile/tls/ca.crt` en el teléfono si levantaste el servidor con la CA local. Instala el certificado y habilita su confianza para HTTPS. En iOS, activa la confianza en **Configuración → General → Información → Configuración de confianza de certificados**. También se puede usar un certificado que el teléfono ya reconozca con `--cert` y `--key`.
-3. Abre la URL HTTPS que muestra el servidor. Usa la clave de `out/mobile/operador.clave` o la configurada mediante `MOBILE_OPERATOR_KEY`. La bandeja en `/revisar` usa su propia clave. Los archivos `*.key` permanecen en el servidor.
-
-El navegador solicita ubicación al iniciar la visita. Si se deniega el permiso o hay varias tiendas cerca, la persona operadora puede elegir una sucursal. Una visita con ubicación pendiente puede registrar capturas y queda sujeta a revisión.
+2. Abre la URL HTTP que imprime el servidor y entra con la clave de `out/mobile/operador.clave` o `MOBILE_OPERATOR_KEY`. La bandeja en `/revisar` usa su propia clave.
+3. Busca la sucursal por nombre o dirección. Confírmala y empieza a registrar tus capturas. La ubicación queda pendiente de verificación.
 
 ## Levantar el piloto
 
@@ -18,10 +16,12 @@ Ejecuta estos comandos desde la raíz del repositorio.
 uv pip install --python .venv/bin/python -r mobile/requirements.txt
 npm ci --prefix mobile/web
 npm run --prefix mobile/web build
-.venv/bin/python -m mobile.serve
+.venv/bin/python -m mobile.serve --http --port 8080
 ```
 
-El servidor escucha por HTTPS en el puerto 8443. Usa `--ip` si el teléfono debe entrar por otra interfaz privada. El primer arranque crea las claves del piloto y carga el catálogo del reto si existe `data/catalogo_productos.csv`. Usa `--local` para probar nitidez y códigos sin enviar imágenes a Foundry. La API principal toma `Endpoint`, `MODEL` y `API_KEY` del mismo entorno que el CLI.
+Usa HTTP en una red privada de confianza. El primer arranque crea las claves del piloto y carga el catálogo del reto si existe `data/catalogo_productos.csv`. Usa `--ip` si el teléfono debe entrar por otra interfaz privada y `--local` para probar nitidez y códigos sin enviar imágenes a Foundry. La API principal toma `Endpoint`, `MODEL` y `API_KEY` del mismo entorno que el CLI.
+
+La ubicación automática y la recarga de la app sin conexión requieren HTTPS. Para habilitarlas, ejecuta `.venv/bin/python -m mobile.serve` y autoriza en el teléfono el certificado de `out/mobile/tls/ca.crt`, o usa un certificado reconocido por el dispositivo con `--cert` y `--key`.
 
 ## Cargar fuentes
 

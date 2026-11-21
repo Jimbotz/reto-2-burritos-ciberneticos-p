@@ -22,12 +22,9 @@ function ElegirSucursal({ config, abrir }: { config?: Config; abrir: (visita: Vi
   const [nombre, setNombre] = useState('')
   const [busy, setBusy] = useState(false)
   const [estado, setEstado] = useState('')
+  const permiteUbicacion = window.isSecureContext && Boolean(navigator.geolocation)
 
   async function ubicar() {
-    if (!window.isSecureContext || !navigator.geolocation) {
-      setEstado('Abre la dirección HTTPS para usar ubicación o busca la sucursal por nombre.')
-      return
-    }
     setBusy(true)
     setEstado('Obteniendo tu ubicación…')
     try {
@@ -70,12 +67,14 @@ function ElegirSucursal({ config, abrir }: { config?: Config; abrir: (visita: Vi
 
   return <section className="panel">
     <h1>Elige tu sucursal</h1>
-    <p className="muted">Confirma la tienda una vez para capturar varios productos en la misma visita.</p>
-    <button className="primary full" disabled={busy} onClick={ubicar}>Usar mi ubicación</button>
+    <p className="muted">{permiteUbicacion
+      ? 'Confirma la tienda una vez para capturar varios productos en la misma visita.'
+      : 'Busca la tienda por nombre o dirección y confírmala una vez por visita.'}</p>
+    {permiteUbicacion && <button className="primary full" disabled={busy} onClick={ubicar}>Usar mi ubicación</button>}
     <form className="input-row" onSubmit={buscar}>
       <label><span>Nombre, cadena o dirección</span><input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
         placeholder="Ej. Soriana Centro" minLength={2} maxLength={120} required /></label>
-      <button disabled={busy}>Buscar</button>
+      <button className={permiteUbicacion ? undefined : 'primary'} disabled={busy}>Buscar</button>
     </form>
     {estado && <p className="notice" role="status">{estado}</p>}
     {tiendas.length > 0 && <ul className="sucursales">
