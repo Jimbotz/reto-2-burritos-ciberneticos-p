@@ -228,3 +228,12 @@ li.barato .barra span { background: var(--marca); }
 .chip { padding: .22rem .5rem; border-radius: 7px; font-size: .78rem; background: var(--muted); white-space: nowrap; }
 .chip.igual { background: var(--secondary); color: var(--primary); }
 .chip.distinto { background: color-mix(in srgb, var(--marca) 14%, var(--card)); color: var(--marca); font-weight: 600; }
+.hallazgos { display: grid; gap: .5rem; }
+.hallazgos ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.hallazgo { display: flex; gap: .45rem; align-items: flex-start; font-size: .9rem; }
+.hallazgo > span:first-child { font-weight: 700; width: 1rem; flex: none; text-align: center; }
+.hallazgo small { display: block; color: var(--muted-foreground); margin-top: .15rem; }
+.hallazgo.falla > span:first-child { color: var(--marca); }
+.hallazgo.aviso > span:first-child { color: var(--primary); }
+.hallazgo.ok > span:first-child { color: var(--muted-foreground); }
+.notice.accion strong { margin-right: .25rem; }

@@ -58,6 +58,10 @@ def hallazgos(cap, res, senales):
     if "tienda_fachada" in v:
         out.append(h("fachada", "modelo", "ok", f"La fachada corresponde a {store}.") if v["tienda_fachada"] == "ok" else
                    h("fachada", "modelo", "falla", f"La fachada no permite confirmar que la tienda sea {store}.", ACCIONES["FACHADA_INCORRECTA"]))
+    if "sucursal" in v:  # app móvil: la sucursal se verifica con la ubicación de la visita y de las fotos
+        out.append(h("fachada", "ubicación", "ok", f"La sucursal de {store} quedó verificada con la ubicación.") if v["sucursal"] == "ok" else
+                   h("fachada", "ubicación", "aviso", "No se pudo verificar la sucursal con la ubicación.",
+                     "Activa la ubicación del teléfono y toma las fotos dentro de la tienda."))
     out.append(h("producto", "modelo", "ok", f"El producto coincide con «{cap.get('product_name')}».") if v.get("producto") == "ok" else
                h("producto", "modelo", "falla", f"El producto de la foto no se pudo confirmar como «{cap.get('product_name')}».",
                  ACCIONES["PRODUCTO_NO_COINCIDE"]))

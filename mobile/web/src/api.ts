@@ -6,10 +6,12 @@ export type Sucursal = {
 }
 export type Visita = { id: string; cadena: string; nombre: string; ubicacion: 'verificada' | 'manual' }
 export type Producto = { id_product: string; product_name: string; product_barcode: string }
+export type Hallazgo = { frente: string; fuente: string; nivel: 'ok' | 'aviso' | 'falla'; mensaje: string; accion: string | null }
 export type Resultado = {
   decision: 'aprobada' | 'rechazada' | 'revision_manual'
   explicacion: string; reason_code: string; precio_detectado: number | null
   validaciones: Record<string, 'ok' | 'falla'>
+  hallazgos?: Hallazgo[]; accion_sugerida?: string | null
 }
 export type Captura = {
   id: string; estado: 'pendiente' | 'validando' | 'procesada'

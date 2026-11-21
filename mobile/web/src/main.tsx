@@ -7,6 +7,7 @@ import { Campo } from './Campo'
 import { Comparar } from './Comparar'
 import { Corregidos } from './Corregidos'
 import { TresB } from './TresB'
+import { Hallazgos } from './Hallazgos'
 import { Comparativo } from './Comparativo'
 import logo3b from './assets/logo-3b.png'
 import '@fontsource/inter/400.css'
@@ -140,6 +141,7 @@ function Revisar() {
       <h2>{elegida.sucursal} · {pesos(elegida.precio_centavos)}</h2>
       {elegida.resultado && <TresB resultado={elegida.resultado} />}
       <p>{elegida.resultado?.explicacion}</p>
+      {elegida.resultado && <Hallazgos resultado={elegida.resultado} />}
       <div className="fotos">{(['producto', 'etiqueta'] as const).map((tipo) => <a key={tipo}
         href={`/api/capturas/${elegida.id}/foto/${tipo}`} target="_blank" rel="noreferrer">
         <img className="evidencia" src={`/api/capturas/${elegida.id}/foto/${tipo}`} alt={`Foto de ${tipo}`} />

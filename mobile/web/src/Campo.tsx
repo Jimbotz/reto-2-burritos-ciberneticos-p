@@ -4,10 +4,19 @@ import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura,
   type Config, type Posicion, type Producto, type Sucursal, type Visita } from './api'
 import { borradores, borrarBorrador, guardarBorrador, uuid } from './borradores'
 import { TresB } from './TresB'
+import { Hallazgos } from './Hallazgos'
 
 const decisiones = { aprobada: '✓ Aprobada', rechazada: '✕ Rechazada', revision_manual: '! Revisión manual' }
 const mensaje = (error: unknown) => error instanceof ErrorApi ? error.message : 'No se pudo conectar con el servidor.'
 const ahora = () => Date.now() / 1000
+type Recaptura = { codigo: string; precio: string; motivo: string; n: number }
+// datos de la última captura enviada, para volver a capturarla si el motor la rechaza
+function ultimosDatos(id: string): { codigo: string; precio: string } | null {
+  try {
+    const d = JSON.parse(localStorage.getItem('validat3b.ultimo_datos') || 'null') as { id: string; codigo: string; precio: string } | null
+    return d && d.id === id ? d : null
+  } catch { return null }
+}
 
 function visitaGuardada(): Visita | null {
   try { return JSON.parse(localStorage.getItem('validat3b.visita') || 'null') as Visita | null }
@@ -119,7 +128,9 @@ function Foto({ label, file, onFile }: { label: string; file: File | null; onFil
   </label>
 }
 
-function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borrador) => Promise<void> }) {
+function Formulario({ visita, encolar, recaptura }: {
+  visita: Visita; encolar: (draft: Borrador) => Promise<void>; recaptura: Recaptura | null
+}) {
   const [codigo, setCodigo] = useState('')
   const [sku, setSku] = useState<Producto | null>(null)
   const [nombre, setNombre] = useState('')
@@ -144,6 +155,14 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
     } catch (error) { setEstado(mensaje(error)) }
     finally { setBusy(false) }
   }
+
+  useEffect(() => {  // "Volver a capturar": mismo producto y precio, fotos nuevas
+    if (!recaptura) return
+    setCodigo(recaptura.codigo); setPrecio(recaptura.precio); setProducto(null); setEtiqueta(null)
+    setEstado(`Vuelve a tomar las fotos. ${recaptura.motivo}`.trim())
+    if (recaptura.codigo.length >= 8) void buscar(recaptura.codigo)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [recaptura?.n])
 
   async function leer() {
     if (!producto) return
@@ -220,6 +239,7 @@ export function Campo() {
   const [ultimo, setUltimo] = useState(() => localStorage.getItem('validat3b.ultimo') || '')
   const [aviso, setAviso] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [recaptura, setRecaptura] = useState<Recaptura | null>(null)
   const sincronizando = useRef(false)
   const sincronizarDeNuevo = useRef(false)
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<Config>('/config'), staleTime: 60000 }).data
@@ -278,6 +298,7 @@ export function Campo() {
 
   async function encolar(draft: Borrador) {
     await guardarBorrador(draft)
+    localStorage.setItem('validat3b.ultimo_datos', JSON.stringify({ id: draft.id, codigo: draft.codigo, precio: draft.precio }))
     setPendientes(await borradores())
     void sincronizar()
   }
@@ -288,7 +309,8 @@ export function Campo() {
         <strong>{visita.nombre}</strong></div>
       <button onClick={() => abrir(null)}>Cambiar</button>
     </div>}
-    {visita ? <Formulario key={visita.id} visita={visita} encolar={encolar} /> : <ElegirSucursal config={config} abrir={abrir} />}
+    {visita ? <Formulario key={visita.id} visita={visita} encolar={encolar} recaptura={recaptura} />
+      : <ElegirSucursal config={config} abrir={abrir} />}
     {pendientes.length > 0 && <section className="panel compact">
       <h2>Envíos pendientes ({pendientes.length})</h2>
       {aviso && <p role="status" className="notice">{aviso}</p>}
@@ -308,6 +330,10 @@ export function Campo() {
         <strong className={`decision ${resultado.resultado.decision}`}>{decisiones[resultado.resultado.decision]}</strong>
         <TresB resultado={resultado.resultado} />
         <p>{resultado.resultado.explicacion}</p>
+        <Hallazgos resultado={resultado.resultado} />
+        {resultado.resultado.decision === 'rechazada' && visita && ultimosDatos(resultado.id) && <button className="primary full"
+          onClick={() => setRecaptura({ ...ultimosDatos(resultado.id)!, motivo: resultado.resultado?.accion_sugerida || '', n: Date.now() })}>
+          Volver a capturar</button>}
       </> : <strong>Validación en curso</strong>}
     </section>}
   </>
