@@ -59,14 +59,26 @@ confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "fa
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
 
-# v1 = prompt original (default, mejor costo medido). v2 = + equivalencias de medidas y etiqueta del producto correcto
-# (y contenido ya convertido en los metadatos). Elegir con VERSION=v2 en el entorno.
+# Versiones del prompt (elegir con VERSION=… en el entorno; resultados comparados en resultados/resumen.json):
+#   v1   = prompt original. Default: mejor costo medido.
+#   v2   = v1 + equivalencias de medidas + usar la etiqueta del producto correcto (rechazó 1 válida de más y dejó de
+#          rechazar fotos lejanas que v1 rechazaba "por falta de precio unitario").
+#   v2.1 = v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA (sin lo de la etiqueta vecina).
 VERSION = os.environ.get("VERSION", "v1")
-V2_LINES = ('Contenido: 1 kg = 1000 g y 1 L = 1000 ml (por ejemplo, 1.1 L = 1100 ml). El empaque puede mostrar contenido neto y masa drenada; cualquiera de los dos puede ser el esperado. Un extra de promoción (por ejemplo «400 g + 30 g gratis») es el mismo producto. Compara en '
-            'la misma unidad antes de marcar falla.\nLa foto de la etiqueta puede mostrar varias etiquetas y productos vecinos: usa la etiqueta cuya descripción corresponde al producto esperado e ignora las demás. Solo si ninguna lo describe, marca falla en evidencia de precio.\n')
+EQUIVALENCIAS = ("Contenido: 1 kg = 1000 g y 1 L = 1000 ml (por ejemplo, 1.1 L = 1100 ml). El empaque puede mostrar contenido "
+                 "neto y masa drenada; cualquiera de los dos puede ser el esperado. Un extra de promoción (por ejemplo «400 g + "
+                 "30 g gratis») es el mismo producto. Compara en la misma unidad antes de marcar falla.\n")
+ETIQUETA_VECINA = ("La foto de la etiqueta puede mostrar varias etiquetas y productos vecinos: usa la etiqueta cuya descripción "
+                   "corresponde al producto esperado e ignora las demás. Solo si ninguna lo describe, marca falla en evidencia de precio.\n")
+LEJANA = ("Si la etiqueta o el producto se ven pequeños dentro de su foto (tomados de lejos, con mucho anaquel alrededor) y por eso "
+          "no se leen bien, es rechazo con CAPTURA_LEJANA. Usa SIN_PRECIO_UNITARIO solo si la etiqueta se lee bien de cerca y de "
+          "verdad no trae el precio unitario.\n")
+EXTRA = {"v1": "", "v2": EQUIVALENCIAS + ETIQUETA_VECINA, "v2.1": EQUIVALENCIAS + LEJANA}
+if VERSION not in EXTRA:
+    raise SystemExit(f"VERSION={VERSION!r} no existe; usa una de {sorted(EXTRA)}")
 C_LINE = "¿qué precio dice? ¿es regular, oferta o por volumen?\n"
-if VERSION == "v2":
-    PROMPT = PROMPT.replace(C_LINE, C_LINE + V2_LINES, 1)
+assert C_LINE in PROMPT
+PROMPT = PROMPT.replace(C_LINE, C_LINE + EXTRA[VERSION], 1)
 
 
 def nullable(schema):
@@ -131,7 +143,7 @@ def contenido(cap):
 
 def metadata(cap, version=None):
     meta = {k: cap.get(k) for k in META_KEYS}
-    if (version or VERSION) != "v2":  # v1: unidad y cantidad crudas, como en la corrida original
+    if (version or VERSION) == "v1":  # v1: unidad y cantidad crudas, como en la corrida original
         return {**meta, "unit_product": cap.get("unit_product"), "unit_quantity_product": cap.get("unit_quantity_product")}
     if (c := contenido(cap)) is not None:
         meta["contenido_esperado"] = c

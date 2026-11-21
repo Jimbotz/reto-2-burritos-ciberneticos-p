@@ -1,5 +1,5 @@
 {
- "generado": "2026-11-21T19:51:24+00:00",
+ "generado": "2026-11-21T20:10:19+00:00",
  "capturas": 100,
  "analista": {
   "revision_manual": 33,
@@ -48,6 +48,27 @@
     "revision_manual->revision_manual": 27
    },
    "tokens_por_captura": 3990
+  },
+  "v2.1": {
+   "descripcion": "v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA",
+   "capturas": 100,
+   "costo_operativo": 61,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "revision_manual": 55,
+    "rechazada": 30,
+    "aprobada": 15
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 15,
+    "aprobada->rechazada": 2,
+    "aprobada->revision_manual": 16,
+    "rechazada->rechazada": 21,
+    "rechazada->revision_manual": 13,
+    "revision_manual->rechazada": 7,
+    "revision_manual->revision_manual": 26
+   },
+   "tokens_por_captura": 4038
   }
  }
 }

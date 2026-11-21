@@ -81,3 +81,16 @@ details[open] summary { margin-bottom: .6rem; }
   .panel { padding-inline: .75rem; }
   .foto { padding: .45rem; }
 }
+.tabla-scroll { overflow-x: auto; }
+.resumen { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.resumen th, .resumen td { padding: .4rem .55rem; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.resumen th:first-child { text-align: left; font-weight: 600; }
+.versiones-desc { margin: 0; padding-left: 1.1rem; font-size: .85rem; color: var(--muted-foreground); }
+.filtros { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; }
+.filtros .check { display: flex; align-items: center; gap: .4rem; }
+.comparada { display: grid; gap: .45rem; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 10px; }
+.comparada-titulo { display: grid; gap: .15rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { padding: .22rem .5rem; border-radius: 7px; font-size: .78rem; background: var(--muted); white-space: nowrap; }
+.chip.igual { background: var(--secondary); color: var(--primary); }
+.chip.distinto { background: color-mix(in srgb, var(--marca) 14%, var(--card)); color: var(--marca); font-weight: 600; }

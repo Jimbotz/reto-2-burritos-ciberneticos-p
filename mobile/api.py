@@ -443,6 +443,15 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
             ).fetchall()
         return [{**captura_publica(item), "cadena": item["cadena"], "sucursal": item["nombre"]} for item in items]
 
+    @app.get("/api/comparativo")
+    def comparativo(_=Depends(revisor)):
+        # Analista vs versiones del motor, por captura. Trae datos de 3B: solo con clave de revisión y solo el archivo
+        # local que genera comparativo.py (out/ está fuera de git); al repo público va únicamente resultados/resumen.json.
+        archivo = ROOT / "out/comparativo.json"
+        if not archivo.is_file():
+            raise HTTPException(404, "Aún no hay comparativo. Genera out/comparativo.json con comparativo.py.")
+        return FileResponse(archivo, media_type="application/json")
+
     @app.get("/api/capturas/{id_captura}/foto/{tipo}")
     def ver_foto(id_captura: UUID, tipo: Literal["producto", "etiqueta"], _=Depends(revisor)):
         with conectar(path) as db:
@@ -471,6 +480,7 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
 
         @app.get("/", include_in_schema=False)
         @app.get("/revisar", include_in_schema=False)
+        @app.get("/comparativo", include_in_schema=False)
         def pantalla():
             return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
 

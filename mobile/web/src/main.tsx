@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { createRootRoute, createRoute, createRouter, Link, Outlet, RouterProvider } from '@tanstack/react-router'
 import { api, ErrorApi, pesos, post, type Captura, type Rol } from './api'
 import { Campo } from './Campo'
+import { Comparativo } from './Comparativo'
 import logo3b from './assets/logo-3b.png'
 import './styles.css'
 
@@ -80,6 +81,7 @@ function Inicio() {
   return rol === 'revisor' ? <section className="panel">
     <h1>Revisión de capturas</h1>
     <Link className="button primary" to="/revisar">Abrir bandeja</Link>
+    <Link className="button" to="/comparativo">Comparativo de versiones</Link>
   </section> : <Campo />
 }
 
@@ -139,11 +141,18 @@ function Revisar() {
   </section>
 }
 
+function ComparativoRevisor() {
+  return useRol() === 'revisor' ? <Comparativo /> : <section className="panel">
+    <h1>Comparativo de versiones</h1><p>Esta pantalla requiere la clave de revisión.</p><Link to="/">Volver</Link>
+  </section>
+}
+
 const root = createRootRoute({ component: App })
 const router = createRouter({
   routeTree: root.addChildren([
     createRoute({ getParentRoute: () => root, path: '/', component: Inicio }),
     createRoute({ getParentRoute: () => root, path: '/revisar', component: Revisar }),
+    createRoute({ getParentRoute: () => root, path: '/comparativo', component: ComparativoRevisor }),
   ]),
 })
 

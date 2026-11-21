@@ -22,7 +22,8 @@ Datos (no se suben al repo): descomprimir ambos zips del reto en `data/` para qu
 .venv/bin/python validat3b.py data/capturas.json out/resultados.json     # todas
 .venv/bin/python test_validat3b.py                                       # pruebas de reglas
 VERSION=v2 .venv/bin/python validat3b.py data/capturas.json out/v2.json   # v2: + equivalencias de medidas y etiqueta correcta
-.venv/bin/python comparativo.py --tokens-v2 N                            # analista vs v1 vs v2
+VERSION=v2.1 .venv/bin/python validat3b.py data/capturas.json out/v2_1.json  # v2.1: + medidas + foto lejana
+.venv/bin/python comparativo.py --tokens v2=N v2.1=M                       # analista vs v1 vs v2 vs v2.1
 ```
 
 Con datos etiquetados imprime costo operativo, precisión de aprobación y la matriz esperada → predicha.
