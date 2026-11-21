@@ -70,6 +70,8 @@ reason_code válidos:
 #   v1   = prompt original.
 #   v2   = v1 + equivalencias de medidas + usar la etiqueta del producto correcto (rechazó 1 válida de más y dejó de
 #          rechazar fotos lejanas que v1 rechazaba "por falta de precio unitario").
+#   v2.2 = v2.1 + el modelo califica cada foto (calidad_fotos: buena/lejana/borrosa/tapada) y la regla de rechazo
+#          usa ese campo en lugar de buscar palabras en la explicación.
 #   v2.1 = v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA (sin lo de la etiqueta vecina).
 #          Default: con la regla de rechazo por mala calidad es la de menor costo (47 o 63 según cuánto cueste rechazar
 #          una 'revisión' del analista; v1 da 52 o 67).
@@ -82,7 +84,11 @@ ETIQUETA_VECINA = ("La foto de la etiqueta puede mostrar varias etiquetas y prod
 LEJANA = ("Si la etiqueta o el producto se ven pequeños dentro de su foto (tomados de lejos, con mucho anaquel alrededor) y por eso "
           "no se leen bien, es rechazo con CAPTURA_LEJANA. Usa SIN_PRECIO_UNITARIO solo si la etiqueta se lee bien de cerca y de "
           "verdad no trae el precio unitario.\n")
-EXTRA = {"v1": "", "v2": EQUIVALENCIAS + ETIQUETA_VECINA, "v2.1": EQUIVALENCIAS + LEJANA}
+CALIDAD = ("calidad_fotos: califica la foto del producto y la de la etiqueta SOLO por cómo se tomaron: buena (de cerca, enfocada, "
+           "se lee), lejana (el objeto se ve pequeño y por eso no se lee), borrosa (desenfocada o movida) o tapada (algo cubre la "
+           "parte importante). Que a la etiqueta le falte una leyenda (oferta, volumen, precio unitario) o que haya otras etiquetas "
+           "cerca NO es mala calidad de foto.\n")
+EXTRA = {"v1": "", "v2": EQUIVALENCIAS + ETIQUETA_VECINA, "v2.1": EQUIVALENCIAS + LEJANA, "v2.2": EQUIVALENCIAS + LEJANA + CALIDAD}
 if VERSION not in EXTRA:
     raise SystemExit(f"VERSION={VERSION!r} no existe; usa una de {sorted(EXTRA)}")
 C_LINE = "¿qué precio dice? ¿es regular, oferta o por volumen?\n"
@@ -125,6 +131,11 @@ MOBILE_PROMPT = PROMPT.replace(
     "Evalúa solo la evidencia de las dos fotos. La API verifica la sucursal por separado. "
     "Aprueba si todos los frentes de las fotos son claramente correctos.",
 )
+CALIDADES = ["buena", "lejana", "borrosa", "tapada"]
+if VERSION == "v2.2":
+    SCHEMA["properties"]["calidad_fotos"] = {"type": "object", "additionalProperties": False, "required": ["producto", "etiqueta"],
+                                             "properties": {k: {"type": "string", "enum": CALIDADES} for k in ("producto", "etiqueta")}}
+    SCHEMA["required"].append("calidad_fotos")
 MOBILE_SCHEMA = json.loads(json.dumps(SCHEMA))
 MOBILE_CHECKS = ("sucursal", "producto", "codigo_barras", "evidencia_precio")
 MOBILE_SCHEMA["properties"]["validaciones"]["properties"].pop("tienda_fachada")
@@ -293,10 +304,21 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None, geo=No
             res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
                        explicacion=f"{res['explicacion']} [regla: el modelo dudó, pero {why_up}]".strip())
 
-    # el modelo dudó por la calidad de la foto (etiqueta pequeña, borrosa, ilegible…) → rechazar para recapturar
-    if (res["decision"] == "revision_manual" and r.get("decision") == "revision_manual"
-            and DUDA_VISUAL.search(str(r.get("explicacion") or ""))):
-        code = "CAPTURA_BORROSA" if re.search(r"borros|desenfoc", str(r.get("explicacion")), re.I) else "CAPTURA_LEJANA"
+    # el modelo dudó por la calidad de la foto → rechazar para recapturar. v2.2 trae calidad_fotos (estructurado);
+    # las versiones anteriores no, y ahí se busca la duda en el texto (DUDA_VISUAL, que confunde "no existe" con "no se ve").
+    cal, code = r.get("calidad_fotos"), None
+    if res["decision"] == "revision_manual" and r.get("decision") == "revision_manual":
+        if isinstance(cal, dict):
+            malas = {k: q for k, q in cal.items() if q in ("borrosa", "lejana", "tapada")}
+            if "borrosa" in malas.values():
+                code = "CAPTURA_BORROSA"
+            elif "lejana" in malas.values():
+                code = "CAPTURA_LEJANA"
+            elif malas:
+                code = "PRODUCTO_NO_VISIBLE" if "producto" in malas else "SIN_ETIQUETA_PRECIO"
+        elif DUDA_VISUAL.search(str(r.get("explicacion") or "")):
+            code = "CAPTURA_BORROSA" if re.search(r"borros|desenfoc", str(r.get("explicacion")), re.I) else "CAPTURA_LEJANA"
+    if code:
         res.update(decision="rechazada", reason_code=code,
                    explicacion=f"{res['explicacion']} [regla: evidencia de mala calidad: se rechaza para volver a capturar]".strip())
 
@@ -353,6 +375,8 @@ def decide(cap, base, client, *, store_verified=None, senales=None):
     r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
     # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
     senales["modelo"] = True
+    if r.get("calidad_fotos"):
+        senales["calidad_fotos"] = r["calidad_fotos"]
     ocr = None if store_verified is not None else cache(lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
     res = apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr, geo=geo)
     if ocr is not None and ocr.cache_info().currsize:  # solo si la regla llegó a necesitar el OCR

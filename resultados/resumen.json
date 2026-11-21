@@ -1,5 +1,5 @@
 {
- "generado": "2026-11-21T20:42:54+00:00",
+ "generado": "2026-11-21T21:08:43+00:00",
  "capturas": 100,
  "analista": {
   "revision_manual": 33,
@@ -111,6 +111,27 @@
     "revision_manual->revision_manual": 17
    },
    "tokens_por_captura": 4038
+  },
+  "v2.2": {
+   "descripcion": "v2.1 + el modelo califica cada foto (buena/lejana/borrosa/tapada) y se rechaza para recapturar solo si la foto es mala",
+   "capturas": 100,
+   "costo_operativo": 55,
+   "precision_aprobacion": 1.0,
+   "distribucion": {
+    "revision_manual": 43,
+    "rechazada": 42,
+    "aprobada": 15
+   },
+   "esperada_vs_predicha": {
+    "aprobada->aprobada": 15,
+    "aprobada->rechazada": 4,
+    "aprobada->revision_manual": 14,
+    "rechazada->rechazada": 26,
+    "rechazada->revision_manual": 8,
+    "revision_manual->rechazada": 12,
+    "revision_manual->revision_manual": 21
+   },
+   "tokens_por_captura": 4396
   }
  }
 }
