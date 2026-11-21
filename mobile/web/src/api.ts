@@ -17,6 +17,11 @@ export type Captura = {
   precio_centavos: number; cadena?: string; sucursal?: string
 }
 export type Referencia = { precio_centavos: number; fecha: string; sucursal: string; presentacion: string }
+export type PrecioCercano = Referencia & { id: string; distancia_m: number; direccion: string; municipio: string }
+export type ComparacionQQP = {
+  referencia: Referencia | null; cercanos: PrecioCercano[]; radio_m: number
+  estado: 'ok' | 'sin_equivalencia' | 'sin_ubicacion'
+}
 export type Config = { cadenas: string[]; fuentes: Record<string, number>; foundry: boolean }
 export type Borrador = {
   id: string; visita_id: string; sku: string | null; codigo: string; precio: string

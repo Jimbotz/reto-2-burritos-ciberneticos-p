@@ -39,6 +39,8 @@ La muestra inicial combina [DENUE](https://www.inegi.org.mx/app/descarga/) y [ob
 
 Archivos verificados de DENUE de mayo de 2025. [Ciudad de México](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_09_0525_csv.zip), [Jalisco](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_14_0525_csv.zip), [Nuevo León](https://www.inegi.org.mx/contenidos/masiva/denue/2025_05/denue_19_0525_csv.zip)
 
+Al buscar un producto con equivalencia verificada, la app muestra hasta cinco precios históricos por sucursal de Profeco en un radio de 3 km. Las observaciones se ordenan por distancia desde la sucursal elegida e incluyen su fecha de levantamiento.
+
 ## Evaluación oficial y operación móvil
 
 El CLI recibe fachada, producto y etiqueta, y conserva el JSON oficial con `tienda_fachada`. La app guarda `sucursal` en el resultado móvil y aplica las reglas de producto, código, precio y confianza del mismo motor. La revisión humana pertenece a la operación móvil. Las fotos se guardan en el servidor y solo el worker las envía al endpoint de IA asignado cuando habilitas Foundry. [Bases y conexión oficiales](https://hackaton3b.com/validat3b.html#foundry)

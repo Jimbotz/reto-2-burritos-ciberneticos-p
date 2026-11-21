@@ -53,6 +53,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .input-row button { padding-inline: .6rem; white-space: nowrap; }
 .notice { padding: .7rem .8rem; background: var(--accent); border-radius: 9px; overflow-wrap: anywhere; }
 .notice small { margin-top: .22rem; }
+.precios-qqp h2 { margin-top: .35rem; }
+.precios-qqp > div + h2 { margin-top: .85rem; }
+.precios-qqp ul { list-style: none; margin: .55rem 0 0; padding: 0; }
+.precios-qqp li { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; padding: .45rem 0; border-top: 1px solid var(--border); }
+.precios-qqp li > strong { white-space: nowrap; }
 .sucursales { list-style: none; display: grid; gap: .55rem; padding: 0; margin: 0; }
 .store { display: flex; align-items: center; justify-content: space-between; gap: .55rem; text-align: left; padding: .65rem .75rem; }
 .store small { font-weight: 450; margin-top: .25rem; }

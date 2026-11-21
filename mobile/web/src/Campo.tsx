@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura, type Config,
-  type Posicion, type Producto, type Referencia, type Sucursal, type Visita } from './api'
+import { api, ErrorApi, pesos, post, subir, type Borrador, type Captura, type ComparacionQQP,
+  type Config, type Posicion, type Producto, type Sucursal, type Visita } from './api'
 import { borradores, borrarBorrador, guardarBorrador, uuid } from './borradores'
 
 const decisiones = { aprobada: 'Aprobada', rechazada: 'Rechazada', revision_manual: 'Revisión manual' }
@@ -118,6 +118,31 @@ function Foto({ label, file, onFile }: { label: string; file: File | null; onFil
   </label>
 }
 
+function PreciosQQP({ comparacion }: { comparacion: ComparacionQQP }) {
+  const { referencia, cercanos, radio_m, estado } = comparacion
+  const radioKm = radio_m / 1000
+  if (estado === 'sin_equivalencia') return <small>Este producto aún no tiene una equivalencia verificada en Profeco.</small>
+  if (estado === 'sin_ubicacion') return <small>Elige una sucursal del buscador para comparar precios cercanos de Profeco.</small>
+  return <section className="notice precios-qqp" aria-label="Precios históricos de Profeco">
+    {referencia && <div>
+      <strong>Referencia Profeco {pesos(referencia.precio_centavos)}</strong>
+      <small>{referencia.fecha} · {referencia.sucursal} · {referencia.presentacion}</small>
+    </div>}
+    {cercanos.length > 0 ? <>
+      <h2>Precios cercanos de Profeco</h2>
+      <small>Observaciones históricas hasta {radioKm} km de la visita.</small>
+      <ul>{cercanos.map((item) => <li key={item.id}>
+        <span>
+          <strong>{item.sucursal}</strong>
+          <small>{item.municipio} · {item.distancia_m < 1000
+            ? `${item.distancia_m} m` : `${(item.distancia_m / 1000).toFixed(1)} km`} · {item.fecha}</small>
+        </span>
+        <strong>{pesos(item.precio_centavos)}</strong>
+      </li>)}</ul>
+    </> : <small>Sin observaciones comparables a {radioKm} km de la visita.</small>}
+  </section>
+}
+
 function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borrador) => Promise<void> }) {
   const [codigo, setCodigo] = useState('')
   const [sku, setSku] = useState<Producto | null>(null)
@@ -128,15 +153,17 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
   const [etiqueta, setEtiqueta] = useState<File | null>(null)
   const [estado, setEstado] = useState('')
   const [busy, setBusy] = useState(false)
-  const referencia = useQuery({
-    queryKey: ['qqp', visita.id, sku?.id_product],
-    queryFn: () => api<Referencia | null>(`/precios/qqp?visita_id=${visita.id}&sku=${encodeURIComponent(sku!.id_product)}`),
+  const comparacion = useQuery({
+    queryKey: ['qqp-comparacion', visita.id, sku?.id_product],
+    queryFn: () => api<ComparacionQQP>(`/precios/qqp/comparacion?visita_id=${visita.id}&sku=${encodeURIComponent(sku!.id_product)}`),
     enabled: !!sku, staleTime: 60000,
   }).data
 
   async function buscar(codigoLeido?: string) {
     setBusy(true)
     setEstado('')
+    setSku(null)
+    setOpciones([])
     try {
       const query = codigoLeido ? 'codigo=' + encodeURIComponent(codigoLeido) : 'q=' + encodeURIComponent(nombre)
       const items = await api<Producto[]>('/productos?' + query)
@@ -192,7 +219,9 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
       </div>
       <div className="input-row">
         <label>Código de barras<input value={codigo} required inputMode="numeric" pattern="[0-9]{8,14}"
-          maxLength={14} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} /></label>
+          maxLength={14} disabled={busy} onChange={(e) => {
+            setCodigo(e.target.value.replace(/\D/g, '')); setSku(null); setOpciones([])
+          }} /></label>
         <button type="button" disabled={busy || codigo.length < 8} onClick={() => void buscar(codigo)}>Buscar SKU</button>
       </div>
       {producto && <button type="button" disabled={busy} onClick={() => void leer()}>Leer código de la foto</button>}
@@ -206,10 +235,7 @@ function Formulario({ visita, encolar }: { visita: Visita; encolar: (draft: Borr
           onClick={() => { setSku(item); setOpciones([]); setEstado('') }}>{item.product_name} · {item.product_barcode}</button>)}
       </details>
       {sku && <div className="notice"><strong>{sku.product_name}</strong><small>SKU {sku.id_product} · {sku.product_barcode}</small></div>}
-      {referencia && <div className="notice">
-        <strong>Referencia Profeco {pesos(referencia.precio_centavos)}</strong>
-        <small>{referencia.fecha} · {referencia.sucursal} · {referencia.presentacion}</small>
-      </div>}
+      {comparacion && <PreciosQQP comparacion={comparacion} />}
       <label>Precio en la etiqueta (MXN)<input className="precio" required inputMode="decimal" value={precio}
         placeholder="0.00" maxLength={9} onChange={(e) => setPrecio(e.target.value)} /></label>
       {estado && <p role="status" className="notice">{estado}</p>}
