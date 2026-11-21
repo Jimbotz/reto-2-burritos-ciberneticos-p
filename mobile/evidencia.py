@@ -29,6 +29,15 @@ def gps_exif(imagen):
         return None
 
 
+def precision_exif(imagen):
+    """Error horizontal del GPS en metros (GPSHPositioningError, lo escriben iPhone y Android recientes); None si no viene."""
+    try:
+        valor = float(imagen.getexif().get_ifd(34853)[31])
+        return valor if valor >= 0 else None
+    except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
 def normalizar_foto(archivo):
     contenido = archivo.read(MAX_IMAGEN + 1)
     if not contenido or len(contenido) > MAX_IMAGEN:
@@ -39,7 +48,8 @@ def normalizar_foto(archivo):
                 raise ValueError("Sube una foto JPG, PNG, WebP o HEIC.")
             if imagen.width * imagen.height > 30_000_000 or min(imagen.size) < 128:
                 raise ValueError("La foto debe tener al menos 128 px por lado y hasta 30 megapíxeles.")
-            ubicacion = gps_exif(imagen)
+            gps = gps_exif(imagen)
+            ubicacion = (gps, precision_exif(imagen)) if gps else None  # ((lat, lon), precisión en m)
             # Reduce la decodificación de JPEG de alta resolución antes de corregir la orientación.
             if imagen.format == "JPEG":
                 imagen.draft("RGB", (2048, 2048))

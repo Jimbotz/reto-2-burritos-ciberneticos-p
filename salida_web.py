@@ -10,7 +10,7 @@ import json, sys
 from pathlib import Path
 
 import ocr_local
-from validat3b import BLUR_REJECT, NO_APPROVE_CHAINS, barcodes, blur_score, num
+from validat3b import BLUR_REJECT, NO_APPROVE_CHAINS, barcodes, blur_score, geo_fachada, num
 
 # ponytail: textos propuestos; ajústalos al lenguaje de los operadores de campo
 ACCIONES = {
@@ -44,6 +44,7 @@ def hallazgos(cap, res, senales):
                          ACCIONES["CAPTURA_BORROSA"]))
         else:
             out.append(h("evidencia", "nitidez", "ok", f"La foto {FOTO[kind]} es nítida (nitidez {s:.0f})."))
+    out += hallazgos_geo(cap.get("capture_store_name"), senales.get("geo"))
     if not senales.get("modelo"):
         out.append(h("evidencia", "regla", "aviso", "No se consultó al modelo: la captura se decidió con los filtros locales."))
         return out
@@ -91,6 +92,23 @@ def hallazgos(cap, res, senales):
     return out
 
 
+def hallazgos_geo(store, geo):
+    """Lo que dijo el GPS de la fachada (geolocalizar.py). Sin GPS no se dice nada: hoy ninguna foto del reto lo trae."""
+    if not geo or geo["estado"] == "sin_gps":
+        return []
+    if geo["estado"] == "sin_sucursal_cercana":
+        return [h("fachada", "GPS", "aviso", "La ubicación de la fachada no está cerca de ninguna tienda registrada en DENUE.")]
+    t = geo["tienda"]
+    texto = " El texto de la fachada lo confirma." if geo.get("por_ocr") else ""
+    if geo["estado"] == "otra_cadena":
+        return [h("fachada", "GPS", "falla", f"La ubicación de la fachada está a {t['distancia_m']} m de {t['nombre']} "
+                  f"({t['cadena']}), no de una tienda {store}.{texto}", "Toma la fachada de la tienda donde capturas.")]
+    if geo.get("ambigua"):
+        return [h("fachada", "GPS", "aviso", f"La ubicación apunta a {t['nombre']} a {t['distancia_m']} m, pero hay otra "
+                  "tienda igual o más cerca: no alcanza para confirmar la sucursal.")]
+    return [h("fachada", "GPS", "ok", f"Sucursal según la ubicación: {t['nombre']}, a {t['distancia_m']} m.{texto}")]
+
+
 def accion_sugerida(cap, res):
     if res["decision"] == "aprobada":
         return None
@@ -111,6 +129,7 @@ def senales_locales(cap, res, base):
         s["nitidez"][kind] = round(blur_score(base / cap[f"{kind}_file"]), 1)
         if s["nitidez"][kind] < BLUR_REJECT[kind]:
             return s
+    s["geo"] = geo_fachada(cap, base)
     s["codigos_etiqueta"] = sorted(barcodes(base / cap["shelf_file"]))
     s["modelo"] = not res["explicacion"].startswith(SIN_MODELO)
     if s["modelo"] and (res["decision"] == "aprobada" or "OCR" in res["explicacion"]):

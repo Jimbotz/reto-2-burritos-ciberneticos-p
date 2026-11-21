@@ -136,14 +136,29 @@ def read_label(cap, path):
     text = read_text(path)
     if confirms(cap, text) or not (box := crop_box(text)):
         return text
-    import tempfile
     import cv2
     img = cv2.imread(str(path))
     h, w = img.shape[:2]
-    crop = img[int(box[1] * h):int(box[3] * h), int(box[0] * w):int(box[2] * w)]
-    s = 1280 / max(crop.shape[:2])  # lado mayor a 1280 px
-    crop = cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
-    with tempfile.NamedTemporaryFile(suffix=".jpg") as f:  # local y se borra al salir
-        cv2.imwrite(f.name, crop)
-        second = read_text(f.name)
+    second = _read_scaled(img[int(box[1] * h):int(box[3] * h), int(box[0] * w):int(box[2] * w)])
     return second if confirms(cap, second) else text
+
+
+def _read_scaled(img, side=1280):
+    """Lee la imagen (arreglo de OpenCV) con su lado mayor a `side` px."""
+    import tempfile
+    import cv2
+    s = side / max(img.shape[:2])
+    img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
+    with tempfile.NamedTemporaryFile(suffix=".jpg") as f:  # local y se borra al salir
+        cv2.imwrite(f.name, img)
+        return read_text(f.name)
+
+
+def read_facade(path):
+    """Texto de la fachada. Se reduce a 1280 px: con la foto completa de un iPhone (5712 px) o a 2048 px el modelo
+    entra en bucle ("BBBB…" con el logo de 3B) o alucina; a 1280 leyó "MARIANO ESCO… BEDO 555"."""
+    if not available():
+        return ""
+    import cv2
+    img = cv2.imread(str(path))
+    return "" if img is None else _read_scaled(img)

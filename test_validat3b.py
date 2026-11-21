@@ -1,3 +1,5 @@
+from geolocalizar import contrastar, desempatar
+from mobile.catalogos import cadena_de
 from validat3b import MOBILE_PROMPT, PROMPT, apply_rules, cost
 
 cap = {"capture_id": "X", "capture_price": 30.0, "min_product_price": 20.0, "max_product_price": 40.0,
@@ -11,6 +13,18 @@ assert set(out) == {"capture_id", "decision", "confidence_score", "reason_code",
                     "precio_detectado", "codigo_barras_detectado", "explicacion"}
 assert out["validaciones"] == {"tienda_fachada": "ok", "producto": "ok", "codigo_barras": "ok", "evidencia_precio": "ok"}
 assert out["decision"] == "aprobada"
+otra = apply_rules(cap, ok, geo={"estado": "otra_cadena", "tienda": {
+    "id": "2", "cadena": "Soriana", "nombre": "SORIANITA CENTRO", "municipio": "Morelia",
+    "lat": 19.7, "lon": -101.2, "distancia_m": 23,
+}})
+assert otra["decision"] == "revision_manual" and otra["validaciones"]["tienda_fachada"] == "falla"
+assert "[geo: el GPS ubica la foto a 23 m de SORIANITA CENTRO (Soriana)]" in otra["explicacion"]
+coincide = apply_rules(cap, ok, geo={"estado": "coincide", "tienda": {
+    "id": "1", "cadena": "Tiendas 3B", "nombre": "TIENDAS 3B CENTRO", "municipio": "Morelia",
+    "lat": 19.7, "lon": -101.2, "distancia_m": 18,
+}})
+assert coincide["decision"] == "aprobada" and set(coincide) == set(out)
+assert "[geo: sucursal TIENDAS 3B CENTRO, Morelia, a 18 m]" in coincide["explicacion"]
 assert apply_rules(cap, {**ok, "validaciones": {**ok["validaciones"], "producto": "falla"}})["decision"] == "revision_manual"
 assert apply_rules(cap, {**ok, "precio_detectado": 32})["reason_code"] == "PRECIO_NO_COINCIDE"
 assert apply_rules(cap, {**ok, "precio_detectado": None})["decision"] == "revision_manual"
@@ -105,4 +119,67 @@ assert r_foto["decision"] == "rechazada" and r_foto["reason_code"] == "CAPTURA_L
 assert apply_rules(cap, {**dudosa, "explicacion": "La foto del producto está borrosa."})["reason_code"] == "CAPTURA_BORROSA"
 assert apply_rules(cap, {**dudosa, "explicacion": "No se puede confirmar si la oferta sigue vigente."})["decision"] == "revision_manual"
 assert apply_rules({**cap, "capture_store_name": "Walmart"}, ok)["decision"] == "revision_manual"  # el texto de la regla de cadena no cuenta
+
+tiendas = [
+    {"id": "otra", "cadena": "Soriana", "nombre": "SORIANITA", "municipio": "Morelia", "lat": 19.0, "lon": -99.0001},
+    {"id": "propia", "cadena": "Neto", "nombre": "NETO CENTRO", "municipio": "Morelia", "lat": 19.0, "lon": -99.0005},
+]
+geo = contrastar((19.0, -99.0), "Neto", tiendas)
+assert geo["estado"] == "coincide" and geo["tienda"]["id"] == "propia"
+assert contrastar((19.0, -99.0), "Neto", [{**tiendas[1], "lon": -99.002}])["estado"] == "sin_sucursal_cercana"
+assert geo["ambigua"] is True  # la Soriana está más cerca que la Neto declarada: el GPS no basta
+assert contrastar((19.0, -99.0), "Neto", tiendas[1:])["ambigua"] is False
+gemela = {**tiendas[1], "id": "gemela", "lon": -98.9995}  # otra Neto a ~53 m, del otro lado del GPS
+assert contrastar((19.0, -99.0), "Neto", tiendas[1:] + [gemela])["ambigua"] is True
+duplicada = {**tiendas[1], "id": "duplicada", "lat": 19.0001}  # mismo local registrado dos veces (~11 m)
+assert contrastar((19.0, -99.0), "Neto", tiendas[1:] + [duplicada])["ambigua"] is False
+assert cadena_de("CEDIS MONTERREY T493", "TIENDAS CHEDRAUI") is None
+assert cadena_de("TIENDAS TRES B OFICINAS EJECUTIVAS", "TIENDAS TRES B") is None
+# desempate por OCR de la fachada entre varias sucursales del radio
+netos = contrastar((19.0, -99.0), "Neto", [
+    {"id": "jal", "cadena": "Neto", "nombre": "650121 NETO JALACINGO", "municipio": "M", "lat": 19.0, "lon": -99.0002},
+    {"id": "zap", "cadena": "Neto", "nombre": "650348 NETO ZAPATA 2", "municipio": "M", "lat": 19.0, "lon": -98.9997},
+])
+assert netos["ambigua"] and netos["tienda"]["id"] == "jal"
+zapata = desempatar(netos, "Neto", "<|det|>text [650121, 1, 2, 3]<|/det|>TIENDAS NETO\n<|det|>text [1, 2, 3, 4]<|/det|>ZAPATA")
+assert zapata["tienda"]["id"] == "zap" and zapata["por_ocr"] and not zapata["ambigua"]  # los números de las cajas no cuentan
+assert desempatar(netos, "Neto", "TIENDAS NETO") is netos  # empate: se queda lo que dijo el GPS
+plaza = contrastar((19.0, -99.0), "Soriana", [
+    {"id": "fre", "cadena": "La Comer", "nombre": "439 FRESKO ESFERA", "municipio": "M", "lat": 19.0, "lon": -99.0001},
+    {"id": "sor", "cadena": "Soriana", "nombre": "SORIANA SUPER PLAZA SERENA SUCURSAL 0673", "municipio": "M",
+     "lat": 19.0, "lon": -99.0008},
+])
+assert plaza["estado"] == "coincide" and plaza["ambigua"]  # el GPS solo prefiere la cadena declarada...
+assert desempatar(plaza, "Soriana", "FRESKO La Comer")["estado"] == "otra_cadena"  # ...la fachada dice otra tienda
+assert desempatar(plaza, "Soriana", "SORIANA sucursal 673")["tienda"]["id"] == "sor"
+assert cadena_de("1234 BA EXPRESS CENTRO", "NUEVA WAL MART DE MEXICO") == "Bodega Aurrera"
+assert cadena_de("SUPERCENTER X", "NUEVA WAL MART DE MEXICO") == "Walmart"
+assert cadena_de("SAMS CLUB 1", "NUEVA WAL MART DE MEXICO") is None
+assert cadena_de("650110 NETO CENTRO", "TIENDAS SUPER PRECIO") == "Neto"
+# fachadas reales (Mariano Escobedo, CDMX): 7-Eleven más cerca que la Tiendas 3B declarada; el texto decide
+escobedo = contrastar((19.430886, -99.180497), "Tiendas 3B", [
+    {"id": "3b", "cadena": "Tiendas 3B", "nombre": "TIENDAS TRES B", "municipio": "Miguel Hidalgo",
+     "direccion": "GENERAL MARIANO ESCOBEDO 555 POLANCO V SECCIÓN", "lat": 19.43108792, "lon": -99.18107449},
+    {"id": "7e", "cadena": "Otra", "nombre": "7 ELEVEN SUC 0739 RUBEN DARÍO", "municipio": "Miguel Hidalgo",
+     "direccion": "MARIANO ESCOBEDO 525 DEL BOSQUE DE CHAPULTEPEC I SECCION", "lat": 19.43071982, "lon": -99.18090758},
+])
+assert escobedo["estado"] == "coincide" and escobedo["ambigua"]
+assert desempatar(escobedo, "Tiendas 3B", "ABIERTO 24 HORAS ELEVEN")["estado"] == "otra_cadena"
+assert desempatar(escobedo, "Tiendas 3B", "Tiendas 3B Tu Despensa Inteligente MARIANO ESCOBEDO 555 ENTRADA")["tienda"]["id"] == "3b"
+# texto real del OCR local (fragmento): el "07:00 hrs" del horario no debe empatar con el "7" de 7 ELEVEN
+real_3b = "icar 3B\n<|det|>text [136, 205, 415, 407]<|/det|>Kundas 3B\n<|det|>text [420, 240, 999, 350]<|/det|>MARIANO ESCOBEDO 555\nDE: 07:00 hrs a 22:00 hrs"
+assert desempatar(escobedo, "Tiendas 3B", real_3b)["tienda"]["id"] == "3b"
+assert desempatar(escobedo, "Tiendas 3B", "icarico\n A BIERTO\n 24\n HORAS") is escobedo  # lo que el OCR leyó del 7-Eleven
+# precisión del GPS: más de 50 m no nombra sucursal; el margen con la gemela de la cadena crece 2 × precisión
+cerca_lejos = [{"id": "a", "cadena": "Neto", "nombre": "NETO A", "municipio": "M", "lat": 19.0, "lon": -99.00019},  # ~20 m
+               {"id": "b", "cadena": "Neto", "nombre": "NETO B", "municipio": "M", "lat": 19.0, "lon": -98.99943}]  # ~60 m
+assert contrastar((19.0, -99.0), "Neto", cerca_lejos)["ambigua"] is False
+assert contrastar((19.0, -99.0), "Neto", cerca_lejos, precision_m=15)["ambigua"] is True
+assert contrastar((19.0, -99.0), "Neto", cerca_lejos[:1], precision_m=60)["ambigua"] is True
+# salida web: hallazgo del GPS de la fachada
+import salida_web
+assert salida_web.hallazgos_geo("Neto", {"estado": "sin_gps"}) == []
+assert salida_web.hallazgos_geo("Tiendas 3B", escobedo)[0]["nivel"] == "aviso"
+assert salida_web.hallazgos_geo("Tiendas 3B", desempatar(escobedo, "Tiendas 3B", "ABIERTO 24 HORAS ELEVEN"))[0]["nivel"] == "falla"
+assert "confirma" in salida_web.hallazgos_geo("Tiendas 3B", desempatar(escobedo, "Tiendas 3B", real_3b))[0]["mensaje"]
 print("ok")

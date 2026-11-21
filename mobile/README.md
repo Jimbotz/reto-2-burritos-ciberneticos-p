@@ -31,7 +31,7 @@ La ubicación automática y la recarga de la app sin conexión requieren HTTPS. 
 
 ## Cargar fuentes
 
-El importador acepta el CSV de establecimientos o el ZIP publicado por INEGI. En la edición probada, los archivos usan `latin-1`. El importador limita los resultados a las cadenas soportadas y a las actividades SCIAN de abarrotes, supermercados y minisúpers. Guarda ID DENUE, CLEE y edición.
+El importador acepta el CSV de establecimientos o el ZIP publicado por INEGI. En la edición probada, los archivos usan `latin-1`. El importador limita los resultados a las actividades SCIAN de abarrotes, supermercados y minisúpers. Las cadenas no soportadas de súper y minisúper (OXXO, 7-Eleven…) se guardan como `Otra`: no aparecen para elegir, pero impiden verificar una visita o una foto tomada frente a ellas. Si cargaste DENUE antes de este cambio, vuelve a importarlo. Guarda ID DENUE, CLEE y edición.
 
 ```sh
 .venv/bin/python -m mobile.catalogos --denue data/denue_09_0525_csv.zip --edicion 2025-05 --encoding latin-1

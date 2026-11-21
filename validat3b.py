@@ -16,6 +16,7 @@ import cv2
 import zxingcpp
 from anthropic import AnthropicFoundry
 
+import geolocalizar
 import ocr_local
 
 DECISIONS = ("aprobada", "rechazada", "revision_manual")
@@ -222,7 +223,7 @@ def ask_model(client, cap, base, *, mobile=False):
     return json.loads(next(b.text for b in r.content if b.type == "text")), r.usage.input_tokens + r.usage.output_tokens
 
 
-def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
+def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None, geo=None):
     """Normaliza la respuesta del modelo al formato oficial (ver #foundry en la página del reto) y aplica reglas duras.
     ocr: función que devuelve el texto OCR de la etiqueta; si se pasa, aprobar exige que zxing o el OCR la corroboren.
     Se llama solo si todo lo demás ya pasó (es lo caro)."""
@@ -261,6 +262,18 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
     if label_codes:
         res["codigo_barras_detectado"] = exp if label_ok else sorted(label_codes)[0]
     p, cp = res["precio_detectado"], num(cap.get("capture_price"))
+
+    if geo and geo.get("estado") in ("otra_cadena", "coincide"):
+        tienda, ocr_txt = geo["tienda"], "; confirmada por el texto de la fachada" if geo.get("por_ocr") else ""
+        if geo["estado"] == "otra_cadena" and "tienda_fachada" in res["validaciones"]:
+            res["validaciones"]["tienda_fachada"] = "falla"
+            res["explicacion"] = (f"{res['explicacion']} [geo: el GPS ubica la foto a {tienda['distancia_m']} m "
+                                  f"de {tienda['nombre']} ({tienda['cadena']}){ocr_txt}]").strip()
+        elif geo["estado"] == "coincide":
+            res["explicacion"] = (f"{res['explicacion']} [geo: sucursal {tienda['nombre']}, "
+                                  f"{tienda['municipio']}, a {tienda['distancia_m']} m"
+                                  f"{'; hay otra tienda igual o más cerca' if geo.get('ambigua') else ''}"
+                                  f"{ocr_txt}]").strip()
 
     if ocr is not None:
         ocr = cache(ocr)  # la promoción y la verificación de abajo pueden pedirlo: el OCR corre una sola vez
@@ -312,6 +325,14 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
     return res
 
 
+def geo_fachada(cap, base):
+    """GPS de la fachada → sucursal DENUE (geolocalizar.py); el OCR de la fachada solo corre si el GPS quedó ambiguo."""
+    if not geolocalizar.DENUE.exists():
+        return None
+    foto = base / cap["facade_file"]
+    return geolocalizar.ubicar(foto, cap.get("capture_store_name"), ocr=lambda: ocr_local.read_facade(foto))
+
+
 def decide(cap, base, client, *, store_verified=None, senales=None):
     """senales (opcional): dict que se llena con lo medido localmente, para la salida web descriptiva (salida_web.py)."""
     senales = {} if senales is None else senales
@@ -323,16 +344,17 @@ def decide(cap, base, client, *, store_verified=None, senales=None):
             return apply_rules(cap, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
                                      "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"},
                                store_verified=store_verified), 0
+    geo = senales["geo"] = geo_fachada(cap, base) if store_verified is None else None
     label = barcodes(base / cap["shelf_file"])
     senales["codigos_etiqueta"] = sorted(label)
     if client is None:
         return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label,
-                           store_verified=store_verified), 0
+                           store_verified=store_verified, geo=geo), 0
     r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
     # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
     senales["modelo"] = True
     ocr = None if store_verified is not None else cache(lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
-    res = apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr)
+    res = apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr, geo=geo)
     if ocr is not None and ocr.cache_info().currsize:  # solo si la regla llegó a necesitar el OCR
         senales["ocr"] = ocr()
     return res, tokens
