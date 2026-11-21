@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import InvalidOperation
 from hashlib import sha256
 import hmac
+from itertools import groupby
 import json
 from math import cos, radians
 import os
@@ -37,6 +38,7 @@ RADIO_METROS = 300
 UNIDADES = {"gramo": ("kg", 1000), "mililitro": ("L", 1000), "pieza": ("pieza", 1)}
 RANGO_TAMANO = (0.4, 2.5)  # otras presentaciones: entre 0.4 y 2.5 veces el contenido del producto
 MAX_FILAS_NIVEL = 6
+RADIO_PRECIOS_METROS = 3000
 ARCHIVOS = {"producto": "product.jpg", "etiqueta": "shelf.jpg"}
 WEB = ROOT / "mobile/web/dist"
 
@@ -73,14 +75,18 @@ class RevisionNueva(BaseModel):
     motivo: str = Field(min_length=3, max_length=500)
 
 
+def limites_geograficos(lat, lon, radio):
+    dlat = radio / 111_000
+    dlon = radio / (111_000 * max(0.01, cos(radians(lat))))
+    return lat + dlat, lat - dlat, lon + dlon, lon - dlon
+
+
 def candidatas(db, p):
-    dlat = RADIO_METROS / 111_000
-    dlon = RADIO_METROS / (111_000 * max(0.01, cos(radians(p.lat))))
     resultados = all_dicts(db.execute(
         """SELECT s.id, s.cadena, s.nombre, s.direccion, s.municipio, s.estado, s.fuente, s.lat, s.lon
            FROM sucursales_geo g JOIN sucursales s ON s.rowid=g.rowid
            WHERE g.lat_min <= ? AND g.lat_max >= ? AND g.lon_min <= ? AND g.lon_max >= ?""",
-        (p.lat + dlat, p.lat - dlat, p.lon + dlon, p.lon - dlon),
+        limites_geograficos(p.lat, p.lon, RADIO_METROS),
     ))
     cercanas = []
     for item in resultados:
@@ -238,6 +244,29 @@ def comparar_qqp(db, sku, estado, municipio):
         resultado[nivel] = sorted(resultado[nivel], key=lambda r: (r["por_unidad_centavos"], r["marca"],
                                                                      r["cadena"]))[:MAX_FILAS_NIVEL]
     return resultado
+def precios_qqp_cercanos(db, sku, sucursal_id, fecha, lat, lon):
+    filas = all_dicts(db.execute(
+        """SELECT s.id, s.cadena, s.nombre AS sucursal, s.direccion, s.municipio, s.lat, s.lon,
+                  p.presentacion, p.precio_centavos, p.fecha, p.archivo
+           FROM equivalencias_qqp e JOIN precios_qqp p USING (producto, marca, presentacion)
+           JOIN sucursales s ON s.id=p.sucursal_id JOIN sucursales_geo g ON g.rowid=s.rowid
+           WHERE e.sku=? AND p.fecha<=? AND s.id IS NOT ?
+             AND s.id NOT IN (SELECT qqp_id FROM enlaces_qqp WHERE denue_id=?)
+             AND g.lat_min<=? AND g.lat_max>=? AND g.lon_min<=? AND g.lon_max>=?
+           ORDER BY s.id, p.fecha DESC, p.precio_centavos, p.presentacion""",
+        (sku, fecha, sucursal_id, sucursal_id, *limites_geograficos(lat, lon, RADIO_PRECIOS_METROS)),
+    ))
+    cercanos = []
+    for _, observaciones in groupby(filas, key=lambda fila: fila["id"]):
+        reciente = next(observaciones)
+        if any(otra["fecha"] == reciente["fecha"] and otra["precio_centavos"] != reciente["precio_centavos"]
+               for otra in observaciones):
+            continue
+        distancia = distancia_m(lat, lon, reciente.pop("lat"), reciente.pop("lon"))
+        if distancia <= RADIO_PRECIOS_METROS:
+            reciente["distancia_m"] = round(distancia)
+            cercanos.append(reciente)
+    return sorted(cercanos, key=lambda fila: (fila["distancia_m"], fila["id"]))[:5]
 
 
 def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=None):
@@ -450,6 +479,27 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
                    FROM sucursales s WHERE s.fuente='Profeco QQP'
                    AND EXISTS (SELECT 1 FROM precios_qqp p WHERE p.sucursal_id=s.id)
                    GROUP BY s.estado, s.municipio ORDER BY s.estado, s.municipio"""))
+    @app.get("/api/precios/qqp/comparacion")
+    def comparar_precios_qqp(visita_id: UUID, sku: str = Query(min_length=1, max_length=64), _=Depends(operador)):
+        with conectar(path) as db:
+            visita = db.execute(
+                """SELECT v.sucursal_id, COALESCE(s.lat,v.lat) AS lat, COALESCE(s.lon,v.lon) AS lon
+                   FROM visitas v LEFT JOIN sucursales s ON s.id=v.sucursal_id WHERE v.id=?""",
+                (str(visita_id),),
+            ).fetchone()
+            if not visita:
+                raise HTTPException(404, "Visita no encontrada.")
+            resultado = {"referencia": None, "cercanos": [], "radio_m": RADIO_PRECIOS_METROS, "estado": "ok"}
+            if not db.execute("SELECT 1 FROM equivalencias_qqp WHERE sku=? LIMIT 1", (sku,)).fetchone():
+                return {**resultado, "estado": "sin_equivalencia"}
+            if visita["lat"] is None or visita["lon"] is None:
+                return {**resultado, "estado": "sin_ubicacion"}
+            fecha = datetime.now(timezone.utc).date().isoformat()
+            resultado["referencia"] = referencia_qqp(db, sku, visita["sucursal_id"], fecha)
+            resultado["cercanos"] = precios_qqp_cercanos(
+                db, sku, visita["sucursal_id"], fecha, visita["lat"], visita["lon"],
+            )
+            return resultado
 
     @app.post("/api/capturas", status_code=202)
     def registrar(datos: Annotated[str, Form(max_length=4096)], producto: Annotated[UploadFile, File()],
@@ -536,6 +586,15 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
             ).fetchall()
         return [{**captura_publica(item), "cadena": item["cadena"], "sucursal": item["nombre"]} for item in items]
 
+    @app.get("/api/comparativo")
+    def comparativo(_=Depends(revisor)):
+        # Analista vs versiones del motor, por captura. Trae datos de 3B: solo con clave de revisión y solo el archivo
+        # local que genera comparativo.py (out/ está fuera de git); al repo público va únicamente resultados/resumen.json.
+        archivo = ROOT / "out/comparativo.json"
+        if not archivo.is_file():
+            raise HTTPException(404, "Aún no hay comparativo. Genera out/comparativo.json con comparativo.py.")
+        return FileResponse(archivo, media_type="application/json")
+
     @app.get("/api/capturas/{id_captura}/foto/{tipo}")
     def ver_foto(id_captura: UUID, tipo: Literal["producto", "etiqueta"], _=Depends(revisor)):
         with conectar(path) as db:
@@ -566,6 +625,7 @@ def create_app(state_dir=None, *, local=False, operator_key=None, reviewer_key=N
         @app.get("/revisar", include_in_schema=False)
         @app.get("/comparar", include_in_schema=False)
         @app.get("/corregidos", include_in_schema=False)
+        @app.get("/comparativo", include_in_schema=False)
         def pantalla():
             return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
 

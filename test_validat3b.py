@@ -59,4 +59,43 @@ assert sin_precio["decision"] == "revision_manual" and sin_precio["reason_code"]
 for frase in ("Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
               "¿la fachada corresponde a la cadena indicada? ", "Aprueba solo si los tres frentes son claramente correctos."):
     assert frase in PROMPT and frase not in MOBILE_PROMPT, frase
+from ocr_local import crop_box
+box = crop_box("<|det|>text [100, 200, 300, 400]<|/det|>$30.00\n<|det|>text [0, 0, 999, 50]<|/det|>OFERTA")
+assert box and abs(box[0] - (100 / 999 - 0.08)) < 1e-9 and abs(box[3] - (400 / 999 + 0.08)) < 1e-9  # solo la caja con números
+assert crop_box("<|det|>text [0, 0, 999, 999]<|/det|>$30.00") is None  # ya es toda la foto: no vale la pena recortar
+assert crop_box("sin cajas") is None
+# dudas del modelo corroboradas por el OCR local → aprobar; sin corroborar → revisión; el OCR corre una sola vez
+duda13 = {**ok, "decision": "revision_manual", "confidence_score": 0.6}
+lecturas = []
+leer = lambda: lecturas.append(1) or "ARROZ $30.00 7501234567890"
+assert apply_rules(cap13, duda13, ocr=leer)["decision"] == "aprobada" and len(lecturas) == 1
+assert apply_rules(cap13, duda13, ocr=lambda: "ARROZ $30.00")["decision"] == "revision_manual"
+assert apply_rules({**cap13, "capture_store_name": "Walmart"}, duda13, ocr=leer)["decision"] == "revision_manual"
+assert len(lecturas) == 1  # en cadena sin verificación ni se intenta el OCR
+# contenido esperado legible y con equivalencia (el modelo se confundía con L/ml y kg/g)
+from validat3b import contenido, metadata
+assert contenido({"unit_product": "mililitro", "unit_quantity_product": 1100.0}) == "1100 ml (= 1.1 L)"
+assert contenido({"unit_product": "gramo", "unit_quantity_product": 1000.0}) == "1000 g (= 1 kg)"
+assert contenido({"unit_product": "gramo", "unit_quantity_product": 485.0}) == "485 g"
+assert contenido({"unit_product": "pieza", "unit_quantity_product": 4.0}) == "4 pieza"
+assert contenido({}) is None
+m = metadata({"capture_price": 30.0, "unit_product": "gramo", "unit_quantity_product": 1000.0}, "v2")
+assert metadata({"unit_product": "gramo", "unit_quantity_product": 5.0}, "v1")["unit_quantity_product"] == 5.0
+assert m["contenido_esperado"] == "1000 g (= 1 kg)" and "unit_product" not in m
+# salida web: campos de capturas.json + resultado oficial + hallazgos y acción sugerida
+import salida_web
+cw = {**cap13, "capture_store_name": "Soriana", "product_name": "Arroz", "min_product_price": 20.0, "max_product_price": 40.0}
+borrosa = apply_rules(cw, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
+                           "explicacion": "Foto shelf borrosa (nitidez 12 < 35)"})
+w = salida_web.registro(cw, borrosa, {"nitidez": {"shelf": 12.0}})
+assert w["product_name"] == "Arroz" and w["decision"] == "rechazada" and w["accion_sugerida"] == salida_web.ACCIONES["CAPTURA_BORROSA"]
+assert any(x["fuente"] == "nitidez" and x["nivel"] == "falla" for x in w["hallazgos"])
+otro = apply_rules(cw, {**ok, "precio_detectado": 31})
+w = salida_web.registro(cw, otro, {"nitidez": {"shelf": 90, "product": 90}, "codigos_etiqueta": [], "modelo": True})
+assert any("$31.00" in x["mensaje"] and x["nivel"] == "falla" for x in w["hallazgos"])
+assert w["accion_sugerida"] == salida_web.ACCIONES["PRECIO_NO_COINCIDE"]
+cadena = salida_web.registro({**cw, "capture_store_name": "Walmart"}, apply_rules({**cw, "capture_store_name": "Walmart"}, ok),
+                             {"nitidez": {}, "codigos_etiqueta": ["401013049343"], "modelo": True})
+assert any("código interno" in x["mensaje"] for x in cadena["hallazgos"]) and "analista" in cadena["accion_sugerida"]
+assert salida_web.registro(cw, apply_rules(cw, ok, {"7501234567890"}), {"modelo": True})["accion_sugerida"] is None
 print("ok")

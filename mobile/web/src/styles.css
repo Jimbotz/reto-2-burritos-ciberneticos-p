@@ -16,6 +16,15 @@
   --atencion-fondo: #fff1d6;
   --rechazo: #b42318;
   --rechazo-fondo: #fdecea;
+  /* Alias de la paleta anterior, usados por el comparativo de versiones */
+  --border: var(--linea);
+  --card: var(--papel);
+  --muted: var(--gris);
+  --muted-foreground: var(--apagado);
+  --primary: var(--tinta);
+  --secondary: #ebebe8;
+  --accent: var(--gris);
+  --input: #8a8a8a;
   --f-texto: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-titulo: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   color-scheme: light;
@@ -105,6 +114,26 @@ details[open] summary { margin-bottom: .55rem; }
 .elegido { background: var(--gris); }
 .visit strong, .elegido strong { display: block; }
 .elegido small:first-child { text-transform: uppercase; letter-spacing: .05em; font-weight: 700; font-size: .72rem; }
+.input-row button { padding-inline: .6rem; white-space: nowrap; }
+.notice { padding: .7rem .8rem; background: var(--accent); border-radius: 9px; overflow-wrap: anywhere; }
+.notice small { margin-top: .22rem; }
+.sucursales { list-style: none; display: grid; gap: .55rem; padding: 0; margin: 0; }
+.store { display: flex; align-items: center; justify-content: space-between; gap: .55rem; text-align: left; padding: .65rem .75rem; }
+.store small { font-weight: 450; margin-top: .25rem; }
+.badge { padding: .28rem .45rem; background: var(--secondary); color: var(--primary); border-radius: 7px; font-size: .75rem; white-space: nowrap; }
+details { border-top: 1px solid var(--border); padding-top: .75rem; }
+summary { cursor: pointer; font-weight: 650; min-height: 30px; }
+details[open] summary { margin-bottom: .6rem; }
+.visit { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .65rem .85rem; border-radius: 10px; background: var(--accent); }
+.visit strong { display: block; }
+.fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.foto { position: relative; padding: .6rem; background: var(--muted); border-radius: 9px; cursor: pointer; }
+.foto input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.foto:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.foto-accion { min-height: 44px; display: grid; place-items: center; border: 1px solid var(--input); border-radius: 8px; background: var(--card); text-align: center; }
+.foto img, .evidencia { width: 100%; height: 125px; object-fit: contain; }
+.precio { font-size: 1.3rem; font-weight: 700; max-width: 200px; }
+.choice { text-align: left; margin-top: .5rem; }
 .acciones { display: flex; gap: .5rem; justify-content: flex-end; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -151,8 +180,8 @@ li.propia { margin-inline: -.5rem; padding-inline: .5rem; background: var(--gris
 .barra { height: 6px; margin-top: .4rem; background: #ececec; overflow: hidden; }
 .barra span { display: block; height: 100%; background: var(--tinta); }
 li.barato .barra span { background: var(--marca); }
-.resumen { padding: .7rem .85rem; background: var(--tinta); color: var(--papel); line-height: 1.45; }
-.resumen b { font-weight: 700; }
+.resumen-zona { padding: .7rem .85rem; background: var(--tinta); color: var(--papel); line-height: 1.45; }
+.resumen-zona b { font-weight: 700; }
 
 /* Tabla de cadenas por zona */
 .ranking { display: grid; gap: .6rem; padding: .95rem; background: var(--papel); border-top: 6px solid var(--tinta);
@@ -186,3 +215,16 @@ li.barato .barra span { background: var(--marca); }
   .foto { padding: .35rem; }
   .pestanas-inner { gap: 1rem; }
 }
+.tabla-scroll { overflow-x: auto; }
+.resumen { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.resumen th, .resumen td { padding: .4rem .55rem; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.resumen th:first-child { text-align: left; font-weight: 600; }
+.versiones-desc { margin: 0; padding-left: 1.1rem; font-size: .85rem; color: var(--muted-foreground); }
+.filtros { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; }
+.filtros .check { display: flex; align-items: center; gap: .4rem; }
+.comparada { display: grid; gap: .45rem; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 10px; }
+.comparada-titulo { display: grid; gap: .15rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { padding: .22rem .5rem; border-radius: 7px; font-size: .78rem; background: var(--muted); white-space: nowrap; }
+.chip.igual { background: var(--secondary); color: var(--primary); }
+.chip.distinto { background: color-mix(in srgb, var(--marca) 14%, var(--card)); color: var(--marca); font-weight: 600; }

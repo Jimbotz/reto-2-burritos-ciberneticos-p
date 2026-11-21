@@ -34,6 +34,21 @@ export type Borrador = {
   capturada_en: number; producto: File; etiqueta: File
 }
 
+export type Decision = Resultado['decision']
+export type ResumenVersion = {
+  descripcion: string; costo_operativo: number; precision_aprobacion: number | null
+  distribucion: Partial<Record<Decision, number>>; tokens_por_captura: number | null
+}
+export type ResultadoVersion = {
+  decision: Decision; reason_code: string; confidence_score: number; explicacion: string; precio_detectado: number | null
+}
+export type CapturaComparada = {
+  capture_id: string; tienda: string; producto: string; precio_capturado: number
+  analista: { decision: Decision; motivo: string | null }; revisor: Decision | null
+  versiones: Record<string, ResultadoVersion>
+}
+export type Comparativo = { generado: string; versiones: Record<string, ResumenVersion>; capturas: CapturaComparada[] }
+
 export class ErrorApi extends Error {
   constructor(public status: number, mensaje: string) { super(mensaje) }
 }

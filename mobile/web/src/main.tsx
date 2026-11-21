@@ -7,6 +7,7 @@ import { Campo } from './Campo'
 import { Comparar } from './Comparar'
 import { Corregidos } from './Corregidos'
 import { TresB } from './TresB'
+import { Comparativo } from './Comparativo'
 import logo3b from './assets/logo-3b.png'
 import '@fontsource/inter/400.css'
 import '@fontsource/inter/600.css'
@@ -73,6 +74,7 @@ function App() {
     {rol && <nav className="pestanas" aria-label="Secciones"><div className="pestanas-inner">
       <Link to={rol === 'revisor' ? '/revisar' : '/'}>{rol === 'revisor' ? 'Revisión' : 'Capturar'}</Link>
       <Link to="/comparar">Comparar</Link>
+      {rol === 'revisor' && <Link to="/comparativo">Versiones</Link>}
       <Link to="/corregidos">Errores corregidos</Link>
     </div></nav>}
     <main className="main">
@@ -93,6 +95,7 @@ function Inicio() {
   return rol === 'revisor' ? <section className="panel">
     <h1>Revisión de capturas</h1>
     <Link className="button primary" to="/revisar">Abrir bandeja</Link>
+    <Link className="button" to="/comparativo">Comparativo de versiones</Link>
   </section> : <Campo />
 }
 
@@ -153,6 +156,12 @@ function Revisar() {
   </section>
 }
 
+function ComparativoRevisor() {
+  return useRol() === 'revisor' ? <Comparativo /> : <section className="panel">
+    <h1>Comparativo de versiones</h1><p>Esta pantalla requiere la clave de revisión.</p><Link to="/">Volver</Link>
+  </section>
+}
+
 const root = createRootRoute({ component: App })
 const router = createRouter({
   routeTree: root.addChildren([
@@ -160,6 +169,7 @@ const router = createRouter({
     createRoute({ getParentRoute: () => root, path: '/revisar', component: Revisar }),
     createRoute({ getParentRoute: () => root, path: '/comparar', component: Comparar }),
     createRoute({ getParentRoute: () => root, path: '/corregidos', component: Corregidos }),
+    createRoute({ getParentRoute: () => root, path: '/comparativo', component: ComparativoRevisor }),
   ]),
 })
 

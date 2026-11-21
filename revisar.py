@@ -3,18 +3,24 @@
 Uso:
     python revisar.py           → errores del modelo (aprobó lo que no debía)       · notas en out/notas.json
     python revisar.py manual    → las que el motor manda a revisión manual, por motivo · notas en out/notas_manual.json
+    python revisar.py final     → las 100 del motor final (out/sim_final.json) por decisión · notas en out/notas_final.json
+    python revisar.py final out/v2_1.json → otra corrida (p. ej. v2.1)                     · notas en out/notas_v2_1.json
 Abre http://127.0.0.1:8765. Todo corre en tu máquina: las imágenes de 3B no salen de aquí.
 """
 import html, json, re, sys, webbrowser
 from collections import Counter, defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parent
 DATA, OUT = ROOT / "data", ROOT / "out"
-MODE = "manual" if "manual" in sys.argv[1:] else "errores"
-NOTES = OUT / ("notas_manual.json" if MODE == "manual" else "notas.json")
-RESULTS = OUT / ("sim_ocr.json" if MODE == "manual" else "local.json")
+MODE = next((m for m in ("manual", "final") if m in sys.argv[1:]), "errores")
+NOTES = OUT / {"manual": "notas_manual.json", "final": "notas_final.json"}.get(MODE, "notas.json")
+RESULTS = OUT / {"manual": "sim_ocr.json", "final": "sim_final.json"}.get(MODE, "local.json")
+_otro = next((Path(x) for x in sys.argv[1:] if x.endswith(".json")), None)
+if _otro:  # python revisar.py final out/v2_1.json → esos resultados, con su propio archivo de notas
+    RESULTS, NOTES = _otro.resolve(), OUT / f"notas_{_otro.stem}.json"
 PORT = 8765
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 IMG_RE = re.compile(r"CAP-\d+_(facade|product|shelf)\.jpg")
@@ -131,10 +137,61 @@ def page_manual(caps, res):
     return intro, body
 
 
-def page():
+def page_final(caps, res):
+    from ocr_local import confirms, reads_code, reads_price
+    from validat3b import REASON_CODES, cost
+    rows = lambda p: [json.loads(l) for l in (OUT / p).open()] if (OUT / p).exists() else []
+    first = {r["capture_id"]: r["text"] for r in rows("ocr_4bit.jsonl") if r["prompt"] == "Free OCR." and r["kind"] == "shelf"}
+    crop = {r["capture_id"]: r["text"] for r in rows("ocr_4bit_crop.jsonl")}
+    SAME = {"aprobada": "aprobada", "rechazada": "rechazada", "revision_manual": "revision_manual"}
+    t = Counter((r["decision"], caps[r["capture_id"]]["decision_esperada"]) for r in res)
+    total = sum(cost(caps[r["capture_id"]]["decision_esperada"], r["decision"]) for r in res)
+    th = "".join(f"<th>{h}</th>" for h in ("Motor", "Total", "Analista: aprobada", "rechazada", "revisión"))
+    tr = "".join(f"<tr><td><b>{d}</b></td><td>{sum(t[(d, a)] for a in SAME)}</td>" + "".join(f"<td>{t[(d, a)]}</td>" for a in SAME) + "</tr>"
+                 for d in SAME)
+    intro = (f'<div class="sum"><b>Motor final · costo {total}</b> (todo a revisión = {len(res)}). '
+             f'Resultados de {html.escape(RESULTS.name)}: reglas + OCR local sobre las respuestas del modelo.'
+             f'<table class="mx"><tr>{th}</tr>{tr}</table></div>'
+             '<p class="hint">En cada grupo van primero las que no coinciden con el analista. Marca qué debió hacer el motor.</p>')
+
+    def why(r):
+        tags = re.findall(r"\[regla: (.*?)\]", r["explicacion"])
+        if r["decision"] == "revision_manual":
+            return why_manual(r)
+        if r["decision"] == "aprobada":
+            return tags[-1] if tags else "El modelo aprobó y la etiqueta quedó corroborada (zxing u OCR local)"
+        return f"{r['reason_code']}: {REASON_CODES.get(r['reason_code'], '')}"
+
+    def extra(r):
+        c, i = caps[r["capture_id"]], r["capture_id"]
+        tx = first.get(i)
+        if tx is not None and not confirms(c, tx) and i in crop and confirms(c, crop[i]):
+            tx, src = crop[i], " (2a lectura, recorte)"
+        else:
+            src = ""
+        z, exp = r.get("codigo_barras_detectado"), str(c["product_barcode"]).lstrip("0")
+        return [("Por qué esta decisión", why(r)),
+                ("OCR local de la etiqueta" + src, "sin datos" if tx is None else
+                 f"precio {'✓' if reads_price(c, tx) else '✗'} · dígitos del código {'✓' if reads_code(c, tx) else '✗'}"),
+                ("Código en la etiqueta (zxing)", "no se leyó" if not z else f"{z} {'✓ = producto' if str(z).lstrip('0') == exp else '✗ distinto'}")]
+
+    body = ""
+    for d, title in (("aprobada", "Aprobadas"), ("rechazada", "Rechazadas"), ("revision_manual", "Revisión manual")):
+        rs = sorted((r for r in res if r["decision"] == d),
+                    key=lambda r: (caps[r["capture_id"]]["decision_esperada"] == d, ORDEN[caps[r["capture_id"]]["decision_esperada"]], r["capture_id"]))
+        n = Counter(caps[r["capture_id"]]["decision_esperada"] for r in rs)
+        body += (f'<h2>{title} <small>({len(rs)})</small></h2><p class="hint">Analista: {n["aprobada"]} aprobadas · '
+                 f'{n["rechazada"]} rechazadas · {n["revision_manual"]} revisión manual</p>'
+                 + "".join(card(caps[r["capture_id"]], r, extra=extra(r), radios=True) for r in rs))
+    return intro, body
+
+
+def page(cadena=None):
     caps = {c["capture_id"]: c for c in load(DATA / "capturas.json")}
     res = sorted(load(RESULTS), key=lambda r: r["capture_id"])
-    intro, body = (page_manual if MODE == "manual" else page_errores)(caps, res)
+    if cadena:  # /?cadena=Neto → solo esa cadena
+        res = [r for r in res if caps[r["capture_id"]]["capture_store_name"].lower() == cadena.lower()]
+    intro, body = {"manual": page_manual, "final": page_final}.get(MODE, page_errores)(caps, res)
     return (PAGE.replace("{{BODY}}", body).replace("{{INTRO}}", intro)
             .replace("{{RESULTS}}", html.escape(RESULTS.name)).replace("{{NOTES}}", html.escape(NOTES.name)))
 
@@ -144,6 +201,7 @@ PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name=
 body{font:15px/1.45 system-ui,sans-serif;margin:0 auto;max-width:1200px;padding:16px;background:#f6f6f4;color:#1d1d1b}
 .top{position:sticky;top:0;background:#f6f6f4;padding:8px 0;border-bottom:1px solid #ddd;z-index:1;display:flex;gap:16px;align-items:center}
 h2{margin:32px 0 4px}.hint{margin:0 0 12px;color:#555}.sum{background:#fff8e1;border:1px solid #f0d58a;border-radius:8px;padding:10px}
+.mx{border-collapse:collapse;margin-top:8px;width:auto}.mx td,.mx th{padding:2px 10px;border-bottom:1px solid #e5d9a8;text-align:right}.mx td:first-child{text-align:left}
 .card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;margin:0 0 18px}
 .card header{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:10px}
 .badge{background:#1d4ed8;color:#fff;border-radius:6px;padding:0 6px;font-size:12px}
@@ -198,8 +256,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.local_only():
             return
-        if self.path == "/":
-            return self.reply(200, page().encode(), "text/html; charset=utf-8")
+        path, _, query = self.path.partition("?")
+        if path == "/":
+            cadena = (parse_qs(query).get("cadena") or [None])[0]
+            return self.reply(200, page(cadena).encode(), "text/html; charset=utf-8")
         if self.path == "/notas":
             return self.reply(200, json.dumps(load(NOTES, {}), ensure_ascii=False).encode(), "application/json")
         name = self.path.removeprefix("/img/")

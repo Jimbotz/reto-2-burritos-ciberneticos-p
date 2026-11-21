@@ -9,6 +9,7 @@ Si las capturas traen `decision_esperada`, imprime costo operativo y precisión.
 import base64, json, os, sys
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 from pathlib import Path
 
 import cv2
@@ -48,22 +49,36 @@ NO_APPROVE_CHAINS = {"Walmart", "Bodega Aurrera", "Bara"}
 PROMPT = """Eres analista senior de auditoría de precios de Tiendas 3B. Revisas capturas de precio hechas en campo en tiendas de la competencia. Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel) y los metadatos del producto esperado.
 
 Revisa tres frentes:
-A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? El producto debe verse completo, enfocado y como protagonista de la foto; si aparece amontonado entre otros o no se distingue cuál es, es falla.
-B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas? ¿alguna es foto de la pantalla de otro dispositivo? Las fotos deben ser CERCANAS: si la etiqueta o el producto se ven pequeños dentro de la foto (tomados de lejos, con mucho anaquel alrededor), es falla con CAPTURA_LEJANA aunque se alcance a leer el precio.
-C. Evidencia de precio: la etiqueta debe ocupar buena parte de su foto y su descripción y precio deben leerse sin esfuerzo. ¿Qué precio dice? ¿Es regular, oferta o por volumen?
+A. Identidad del producto: ¿la foto corresponde al producto esperado (marca, descripción, contenido)? ¿se ve completo y legible?
+B. Calidad de evidencia: ¿la fachada corresponde a la cadena indicada? ¿las fotos son nítidas y cercanas? ¿alguna es foto de la pantalla de otro dispositivo?
+C. Evidencia de precio: ¿hay etiqueta de precio visible y legible? ¿qué precio dice? ¿es regular, oferta o por volumen?
 
-Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza con su reason_code. Usa revision_manual solo cuando de verdad no puedas decidir: no se distingue cuál es el producto o no se lee el precio.
-Si no hay etiqueta de precio o le falta el precio unitario, es rechazo (SIN_ETIQUETA_PRECIO o SIN_PRECIO_UNITARIO), no revisión.
-
-NO son motivo de duda; si lo demás está bien, aprueba:
-- La etiqueta de anaquel nombra el producto con abreviaturas, en otro orden o con la marca propia de la tienda, siempre que el tipo de producto, el contenido y el precio coincidan.
-- El precio es de oferta, promoción o por volumen, o la etiqueta trae fechas de vigencia: es evidencia de precio válida; dilo en explicacion.
-- Ángulos o reflejos menores, mientras el producto y la etiqueta se vean de cerca y se lean.
-
-confidence_score es tu certeza (0 a 1) en la decisión: 0.9 o más cuando la evidencia es clara; menos solo si algo concreto te hace dudar. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
+Aprueba solo si los tres frentes son claramente correctos. Si algo falla claramente, rechaza. Si no puedes asegurarlo, revision_manual. Aprobar una captura mala es el peor error posible.
+confidence_score es tu certeza (0 a 1) en la decisión. validaciones: "ok" o "falla" por frente. explicacion: 1-2 frases en español; si hay precio, di si es regular, oferta o por volumen.
 
 reason_code válidos:
 """ + "\n".join(f"- {k}: {v}" for k, v in REASON_CODES.items())
+
+# Versiones del prompt (elegir con VERSION=… en el entorno; resultados comparados en resultados/resumen.json):
+#   v1   = prompt original. Default: mejor costo medido.
+#   v2   = v1 + equivalencias de medidas + usar la etiqueta del producto correcto (rechazó 1 válida de más y dejó de
+#          rechazar fotos lejanas que v1 rechazaba "por falta de precio unitario").
+#   v2.1 = v1 + equivalencias de medidas + reconocer la foto lejana como CAPTURA_LEJANA (sin lo de la etiqueta vecina).
+VERSION = os.environ.get("VERSION", "v1")
+EQUIVALENCIAS = ("Contenido: 1 kg = 1000 g y 1 L = 1000 ml (por ejemplo, 1.1 L = 1100 ml). El empaque puede mostrar contenido "
+                 "neto y masa drenada; cualquiera de los dos puede ser el esperado. Un extra de promoción (por ejemplo «400 g + "
+                 "30 g gratis») es el mismo producto. Compara en la misma unidad antes de marcar falla.\n")
+ETIQUETA_VECINA = ("La foto de la etiqueta puede mostrar varias etiquetas y productos vecinos: usa la etiqueta cuya descripción "
+                   "corresponde al producto esperado e ignora las demás. Solo si ninguna lo describe, marca falla en evidencia de precio.\n")
+LEJANA = ("Si la etiqueta o el producto se ven pequeños dentro de su foto (tomados de lejos, con mucho anaquel alrededor) y por eso "
+          "no se leen bien, es rechazo con CAPTURA_LEJANA. Usa SIN_PRECIO_UNITARIO solo si la etiqueta se lee bien de cerca y de "
+          "verdad no trae el precio unitario.\n")
+EXTRA = {"v1": "", "v2": EQUIVALENCIAS + ETIQUETA_VECINA, "v2.1": EQUIVALENCIAS + LEJANA}
+if VERSION not in EXTRA:
+    raise SystemExit(f"VERSION={VERSION!r} no existe; usa una de {sorted(EXTRA)}")
+C_LINE = "¿qué precio dice? ¿es regular, oferta o por volumen?\n"
+assert C_LINE in PROMPT
+PROMPT = PROMPT.replace(C_LINE, C_LINE + EXTRA[VERSION], 1)
 
 
 def nullable(schema):
@@ -88,7 +103,8 @@ SCHEMA = {
 }
 
 META_KEYS = ("capture_store_name", "capture_date", "capture_price", "capture_brand", "product_name",
-             "unit_product", "unit_quantity_product", "product_group", "product_line")
+             "product_group", "product_line")
+UNITS = {"gramo": ("g", "kg"), "mililitro": ("ml", "L")}
 
 MOBILE_PROMPT = PROMPT.replace(
     "Cada captura trae 3 fotos (fachada de la tienda, producto, etiqueta de precio en anaquel)",
@@ -112,6 +128,26 @@ def load_env(path=Path(__file__).with_name(".env")):
             k, sep, v = line.partition("=")
             if sep and not k.strip().startswith("#"):
                 os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
+
+
+def contenido(cap):
+    """Contenido esperado legible y con su equivalencia (p. ej. "1100 ml (= 1.1 L)"): el modelo confundía L con ml y kg con g."""
+    q, u = num(cap.get("unit_quantity_product")), cap.get("unit_product")
+    if q is None:
+        return None
+    if u not in UNITS:
+        return f"{q:g} {u}"
+    small, big = UNITS[u]
+    return f"{q:g} {small}" + (f" (= {q / 1000:g} {big})" if q >= 1000 else "")
+
+
+def metadata(cap, version=None):
+    meta = {k: cap.get(k) for k in META_KEYS}
+    if (version or VERSION) == "v1":  # v1: unidad y cantidad crudas, como en la corrida original
+        return {**meta, "unit_product": cap.get("unit_product"), "unit_quantity_product": cap.get("unit_quantity_product")}
+    if (c := contenido(cap)) is not None:
+        meta["contenido_esperado"] = c
+    return meta
 
 
 def num(x):
@@ -164,7 +200,7 @@ def ask_model(client, cap, base, *, mobile=False):
         content += [{"type": "text", "text": f"Foto {kind}:"},
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                  "data": img_b64(base / cap[f"{kind}_file"], side)}}]
-    content.append({"type": "text", "text": "Metadatos:\n" + json.dumps({k: cap.get(k) for k in META_KEYS}, ensure_ascii=False)})
+    content.append({"type": "text", "text": "Metadatos:\n" + json.dumps(metadata(cap), ensure_ascii=False)})
     r = client.messages.create(
         model=os.environ["MODEL"],
         max_tokens=16000,
@@ -218,11 +254,23 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
         res["codigo_barras_detectado"] = exp if label_ok else sorted(label_codes)[0]
     p, cp = res["precio_detectado"], num(cap.get("capture_price"))
 
-    # el modelo dudó, pero la etiqueta trae el código del producto, el precio cuadra y no vio fallas → aprobar
-    if (res["decision"] == "revision_manual" and label_ok and p is not None and cp is not None and abs(p - cp) <= 0.01
-            and all(x == "ok" for x in res["validaciones"].values())):
-        res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
-                   explicacion=f"{res['explicacion']} [regla: el código de la etiqueta coincide con el producto]".strip())
+    if ocr is not None:
+        ocr = cache(ocr)  # la promoción y la verificación de abajo pueden pedirlo: el OCR corre una sola vez
+
+    # el modelo dudó, pero no vio fallas, el precio cuadra y la etiqueta está corroborada (zxing u OCR local) → aprobar.
+    # ponytail: en dev (simulado con respuestas reales) el costo bajó de 59 a 57 con 14/14 aprobadas bien.
+    if (res["decision"] == "revision_manual" and p is not None and cp is not None and abs(p - cp) <= 0.01
+            and all(x == "ok" for x in res["validaciones"].values())
+            and cap.get("capture_store_name") not in NO_APPROVE_CHAINS):
+        if label_ok:
+            why_up = "el código de la etiqueta coincide con el producto"
+        elif ocr is not None and ocr_local.confirms(cap, ocr()):
+            why_up = "el OCR local leyó en la etiqueta el precio y el código del producto"
+        else:
+            why_up = None
+        if why_up:
+            res.update(decision="aprobada", confidence_score=max(res["confidence_score"], APPROVE_MIN), reason_code="OK",
+                       explicacion=f"{res['explicacion']} [regla: el modelo dudó, pero {why_up}]".strip())
 
     if res["decision"] == "aprobada":
         lo, hi = num(cap.get("min_product_price")), num(cap.get("max_product_price"))
@@ -249,26 +297,35 @@ def apply_rules(cap, r, label_codes=(), *, store_verified=None, ocr=None):
     return res
 
 
-def decide(cap, base, client, *, store_verified=None):
+def decide(cap, base, client, *, store_verified=None, senales=None):
+    """senales (opcional): dict que se llena con lo medido localmente, para la salida web descriptiva (salida_web.py)."""
+    senales = {} if senales is None else senales
+    senales["nitidez"] = {}
     for kind in ("shelf", "product"):
         s = blur_score(base / cap[f"{kind}_file"])
+        senales["nitidez"][kind] = round(s, 1)
         if s < BLUR_REJECT[kind]:
             return apply_rules(cap, {"decision": "rechazada", "confidence_score": 0.9, "reason_code": "CAPTURA_BORROSA",
                                      "explicacion": f"Foto {kind} borrosa (nitidez {s:.0f} < {BLUR_REJECT[kind]:.0f})"},
                                store_verified=store_verified), 0
     label = barcodes(base / cap["shelf_file"])
+    senales["codigos_etiqueta"] = sorted(label)
     if client is None:
         return apply_rules(cap, {"explicacion": "Sin modelo: pasó los filtros locales"}, label,
                            store_verified=store_verified), 0
     r, tokens = ask_model(client, cap, base, mobile=store_verified is not None)
     # ponytail: la app móvil (store_verified) aún no usa la corroboración OCR; agregarla si su servidor corre en Mac
-    ocr = None if store_verified is not None else (lambda: ocr_local.read_text(base / cap["shelf_file"]))
-    return apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr), tokens
+    senales["modelo"] = True
+    ocr = None if store_verified is not None else cache(lambda: ocr_local.read_label(cap, base / cap["shelf_file"]))
+    res = apply_rules(cap, r, label, store_verified=store_verified, ocr=ocr)
+    if ocr is not None and ocr.cache_info().currsize:  # solo si la regla llegó a necesitar el OCR
+        senales["ocr"] = ocr()
+    return res, tokens
 
 
-def safe_decide(cap, base, client):
+def safe_decide(cap, base, client, senales=None):
     try:
-        return decide(cap, base, client)
+        return decide(cap, base, client, senales=senales)
     except Exception as e:  # nunca perder una captura: el gate pide JSON válido en ≥99%
         print(f"{cap.get('capture_id')}: {e!r}", file=sys.stderr)
         return apply_rules(cap, {"explicacion": f"Error interno: {type(e).__name__}"}), 0
@@ -310,10 +367,14 @@ def main(inp, outp, limit=None):
     todo = caps[:int(limit)] if limit else caps
     base, client = Path(inp).parent, make_client()
     with ThreadPoolExecutor(int(os.environ.get("WORKERS", 4))) as ex:
-        rows = list(ex.map(lambda c: safe_decide(c, base, client), todo))
+        sen = {c["capture_id"]: {} for c in todo}
+        rows = list(ex.map(lambda c: safe_decide(c, base, client, sen[c["capture_id"]]), todo))
     results, tokens = [r for r, _ in rows], sum(t for _, t in rows)
     Path(outp).parent.mkdir(parents=True, exist_ok=True)
-    Path(outp).write_text(json.dumps(results, ensure_ascii=False, indent=1))
+    Path(outp).write_text(json.dumps(results, ensure_ascii=False, indent=1))  # salida oficial del hackathon
+    import salida_web  # salida para la página: campos de capturas.json + resultado + hallazgos (local, trae datos de 3B)
+    web = [salida_web.registro(c, r, sen[c["capture_id"]]) for c, r in zip(todo, results)]
+    Path(outp).with_suffix(".web.json").write_text(json.dumps(web, ensure_ascii=False, indent=1))
     print(f"{len(results)} capturas · {tokens} tokens ({tokens / len(results):.0f}/captura) · modelo: {'sí' if client else 'no'} → {outp}")
     n, s = ocr_local.stats["n"], ocr_local.stats["seconds"]
     print(f"OCR local: {n} etiquetas" + (f" · {s / n:.1f}s/etiqueta" if n else "") + ("" if ocr_local.available() else " (no disponible: sin mlx-vlm)"))

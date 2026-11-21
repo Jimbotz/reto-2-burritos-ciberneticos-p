@@ -21,8 +21,15 @@ Datos (no se suben al repo): descomprimir ambos zips del reto en `data/` para qu
 .venv/bin/python validat3b.py data/capturas.json out/resultados.json 10  # primeras 10 capturas (gasta tokens)
 .venv/bin/python validat3b.py data/capturas.json out/resultados.json     # todas
 .venv/bin/python test_validat3b.py                                       # pruebas de reglas
+VERSION=v2 .venv/bin/python validat3b.py data/capturas.json out/v2.json   # v2: + equivalencias de medidas y etiqueta correcta
+VERSION=v2.1 .venv/bin/python validat3b.py data/capturas.json out/v2_1.json  # v2.1: + medidas + foto lejana
+.venv/bin/python comparativo.py --tokens v2=N v2.1=M                       # analista vs v1 vs v2 vs v2.1
 ```
 
 Con datos etiquetados imprime costo operativo, precisión de aprobación y la matriz esperada → predicha.
 
 La [app móvil de campo](mobile/README.md) permite iniciar una visita por sucursal y registrar producto y etiqueta desde un teléfono conectado a la misma red.
+
+## Resultados
+
+`resultados/resumen.json`: totales por versión (costo operativo, precisión, distribución, matriz esperada → predicha). El detalle por captura (`out/comparativo.json`) se queda local porque trae datos de 3B.

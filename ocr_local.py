@@ -115,3 +115,35 @@ def _run(path):
 def read_text(path):
     """Texto de la imagen; "" si no hay OCR disponible. Seguro de llamar desde varios hilos."""
     return _pool.submit(_run, path).result() if available() else ""
+
+
+DET_RE = re.compile(r"<\|det\|>\w+ \[(\d+), (\d+), (\d+), (\d+)\]<\|/det\|>([^<\n]*)")
+
+
+def crop_box(text, margin=0.08):
+    """Caja (0–1) que une las regiones de texto con números (precio, código); None si no hay o ya es casi toda la foto."""
+    boxes = [tuple(int(v) / 999 for v in m[:4]) for m in DET_RE.findall(text) if any(ch.isdigit() for ch in m[4])]
+    if not boxes:
+        return None
+    x1, y1 = max(0, min(b[0] for b in boxes) - margin), max(0, min(b[1] for b in boxes) - margin)
+    x2, y2 = min(1, max(b[2] for b in boxes) + margin), min(1, max(b[3] for b in boxes) + margin)
+    return None if (x2 - x1) * (y2 - y1) > 0.8 else (x1, y1, x2, y2)
+
+
+def read_label(cap, path):
+    """1a lectura de la etiqueta; si no corrobora, 2a lectura del recorte ampliado de la zona con números
+    (estudio en dev: 10 → 12 válidas corroboradas, 0 no válidas). Devuelve el texto que corroboró, o el de la 1a."""
+    text = read_text(path)
+    if confirms(cap, text) or not (box := crop_box(text)):
+        return text
+    import tempfile
+    import cv2
+    img = cv2.imread(str(path))
+    h, w = img.shape[:2]
+    crop = img[int(box[1] * h):int(box[3] * h), int(box[0] * w):int(box[2] * w)]
+    s = 1280 / max(crop.shape[:2])  # lado mayor a 1280 px
+    crop = cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
+    with tempfile.NamedTemporaryFile(suffix=".jpg") as f:  # local y se borra al salir
+        cv2.imwrite(f.name, crop)
+        second = read_text(f.name)
+    return second if confirms(cap, second) else text

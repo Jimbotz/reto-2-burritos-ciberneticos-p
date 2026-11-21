@@ -121,7 +121,7 @@ export function ComparacionProfeco({ zona, sku, precio }: { zona: Zona; sku: Pro
   return <section className="comparacion" aria-label="Comparación con precios Profeco">
     <div className="comparacion-titulo"><h2>Precios Profeco</h2>
       <small>Tiendas de {zona.municipio} · datos al {fechaCorta(fecha)}</small></div>
-    <p className="resumen">{resumen}</p>
+    <p className="resumen-zona">{resumen}</p>
     {exacto.length > 0 && <div className="nivel">
       <h3>Mismo producto</h3>
       <ul>
